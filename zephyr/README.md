@@ -8,13 +8,15 @@ actors, actor message transport, interrupts, MPU isolation, or hard real-time.
 
 - Build `oreslang-llvmc` on the host from the matching LLVM PR.
 - Install Zephyr SDK / `west`, QEMU, Python, CMake and `clang` with ARM support.
-- Run `west` from the embedded repo root (or use an absolute application path).
+- Run `west` **inside an initialized Zephyr west workspace**; an arbitrary application checkout is not itself a west workspace.
 
 ```sh
-# From oreslang-platform.embedded
-west build -b qemu_cortex_m3 zephyr -d build-zephyr -- \
+# Run inside a Zephyr west workspace after west update and dependencies setup.
+cd /absolute/path/to/zephyr-workspace
+west build -b qemu_cortex_m3 /absolute/path/to/oreslang-platform.embedded/zephyr \
+  -d build-oreslang -- \
   -DORESLANG_LLVMC=/absolute/path/to/oreslang-source.llvm/build/oreslang-llvmc
-west build -t run -d build-zephyr
+west build -t run -d build-oreslang
 ```
 
 The CMake custom build step invokes `oreslang-llvmc --target=thumbv7m-none-eabi`
