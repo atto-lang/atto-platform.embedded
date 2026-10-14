@@ -2,7 +2,7 @@
 
 Embedded and RTOS integration for **Oreslang**, initially targeting Cortex-M and RISC-V.
 
-> **Status: bootstrap.** The first deliverable is a deterministic, fixed-capacity, no-heap C mailbox **reference component** with runnable host tests, plus target profiles. It does **not** yet generate Oreslang firmware, implement Oreslang actors, or provide a hardware sandbox.
+> **Status: experimental scalar Cortex-M AOT demonstrated in Zephyr/QEMU.** The platform now compiles a limited real `.ores` function to ARM code and links it into Zephyr firmware, alongside a deterministic fixed-capacity C mailbox reference. **Oreslang actors, source-driven mailboxes and hardware isolation are not implemented.**
 
 ## Profiles
 
@@ -23,3 +23,17 @@ Host tests validate the mailbox reference, **not** a real microcontroller image 
 ## Upstream
 
 [oreslang-source.llvm](https://github.com/ores-truffle-oreslang/oreslang-source.llvm) provides the intended native AOT code-generation foundation, once the compiler supports the necessary language/runtime subset.
+
+## Native Oreslang firmware smoke
+
+`zephyr/ores/firmware.ores` compiles via the LLVM compiler's
+`--target=thumbv7m-none-eabi` profile; Clang builds the ARM object, which
+Zephyr links into firmware. `zephyr/src/main.c` invokes the exported guest
+function, checks that the result is 42, and emits the pass marker under QEMU.
+
+[Verified Zephyr 4.3.0 QEMU run](https://github.com/canonical-cloud/canonical-docs/actions/runs/38646752678) |
+[Evidence and limitations](verification/2026-10-14-cortexm-aot.md) |
+[Build instructions](zephyr/README.md).
+
+The test proves native execution of an intentionally narrow arithmetic subset,
+not source-level actor/runtime or device parity.

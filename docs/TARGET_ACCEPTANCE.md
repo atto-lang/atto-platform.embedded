@@ -14,3 +14,10 @@ Use this checklist to claim a working Oreslang target only when **all** items ho
 - Worst-case latency or hard-real-time claims require separate measurement/formal analysis.
 
 The host CI, `build-freestanding.sh` and Zephyr C example do **not** by themselves satisfy actor or Oreslang compiler acceptance.
+
+## Scalar firmware precursor — verified
+
+An intermediate prerequisite, native scalar guest execution in Zephyr/QEMU,
+passed on 2026-10-14; see
+[exact-source run #38646752678](https://github.com/canonical-cloud/canonical-docs/actions/runs/38646752678).
+The actor-specific acceptance criteria above remain **unmet**.
