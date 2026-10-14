@@ -1,4 +1,7 @@
 #include "ores_embedded_mailbox.h"
+#ifdef NDEBUG
+#undef NDEBUG /* do not elide side-effectful test calls */
+#endif
 #include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -42,5 +45,22 @@ int main(void) {
     assert(ores_embedded_pop(&box, NULL, 0, &n) == ORES_EMBEDDED_OK && n == 0);
     assert(ores_embedded_pop(&box, output, sizeof output, NULL) == ORES_EMBEDDED_INVALID_ARGUMENT);
     assert(ores_embedded_count(NULL) == 0);
+    assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+    box.tail = ORES_EMBEDDED_QUEUE_CAPACITY;
+    assert(ores_embedded_push(&box, &value, 1) == ORES_EMBEDDED_INVALID_ARGUMENT);
+    assert(ores_embedded_pop(&box, output, sizeof output, &n) == ORES_EMBEDDED_INVALID_ARGUMENT);
+    box.tail = 0; box.head = ORES_EMBEDDED_QUEUE_CAPACITY;
+    assert(ores_embedded_push(&box, &value, 1) == ORES_EMBEDDED_INVALID_ARGUMENT);
+    box.head = 0; box.count = ORES_EMBEDDED_QUEUE_CAPACITY + 1u;
+    assert(ores_embedded_push(&box, &value, 1) == ORES_EMBEDDED_INVALID_ARGUMENT);
+    assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+    assert(ores_embedded_push(&box, &value, 1) == ORES_EMBEDDED_OK);
+    box.slots[0].length = ORES_EMBEDDED_MESSAGE_BYTES + 1u;
+    assert(ores_embedded_pop(&box, output, sizeof output, &n) == ORES_EMBEDDED_INVALID_ARGUMENT);
+    assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+    assert(ores_embedded_push(&box, box.slots[0].bytes, 1) == ORES_EMBEDDED_INVALID_ARGUMENT);
+    assert(ores_embedded_push(&box, &value, 1) == ORES_EMBEDDED_OK);
+    assert(ores_embedded_pop(&box, box.slots[0].bytes, ORES_EMBEDDED_MESSAGE_BYTES, &n) == ORES_EMBEDDED_INVALID_ARGUMENT);
+    assert(ores_embedded_count(&box) == 1);
     return 0;
 }

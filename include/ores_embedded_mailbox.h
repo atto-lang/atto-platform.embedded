@@ -8,6 +8,8 @@ extern "C" {
 
 /* Fixed-size, single-consumer/single-producer EVENT LOOP reference only.
  * Not concurrency safe, not a full actor runtime, and not a hardware sandbox.
+ * Caller buffers must not overlap mailbox storage; corrupt bookkeeping is rejected.
+ * Flat-address ARM/RISC-V pointer layouts assumed.
  */
 #define ORES_EMBEDDED_QUEUE_CAPACITY 8u
 #define ORES_EMBEDDED_MESSAGE_BYTES 64u

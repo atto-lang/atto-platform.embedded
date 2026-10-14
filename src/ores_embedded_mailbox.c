@@ -1,6 +1,22 @@
 #include "ores_embedded_mailbox.h"
 
 /* Deliberately freestanding: no heap allocation, syscalls or libc calls. */
+static int valid_state(const ores_embedded_mailbox *box) {
+    if (box == NULL) return 0;
+    if (box->head >= ORES_EMBEDDED_QUEUE_CAPACITY ||
+        box->tail >= ORES_EMBEDDED_QUEUE_CAPACITY ||
+        box->count > ORES_EMBEDDED_QUEUE_CAPACITY) return 0;
+    return box->tail == (box->head + box->count) % ORES_EMBEDDED_QUEUE_CAPACITY;
+}
+
+/* Flat-address embedded targets only; caller must supply valid pointers. */
+static int overlaps_box(const ores_embedded_mailbox *box, const void *p, size_t len) {
+    uintptr_t a, b;
+    if (p == NULL || len == 0) return 0;
+    a = (uintptr_t)p;
+    b = (uintptr_t)box;
+    return (a >= b) ? (a - b < sizeof(*box)) : (b - a < len);
+}
 ores_embedded_status ores_embedded_init(ores_embedded_mailbox *box) {
     size_t i, j;
     if (box == NULL) return ORES_EMBEDDED_INVALID_ARGUMENT;
@@ -22,6 +38,7 @@ ores_embedded_status ores_embedded_push(
     if (box == NULL || (length != 0 && data == NULL))
         return ORES_EMBEDDED_INVALID_ARGUMENT;
     if (length > ORES_EMBEDDED_MESSAGE_BYTES) return ORES_EMBEDDED_TOO_LARGE;
+    if (!valid_state(box) || overlaps_box(box, data, length)) return ORES_EMBEDDED_INVALID_ARGUMENT;
     if (box->count >= ORES_EMBEDDED_QUEUE_CAPACITY) return ORES_EMBEDDED_FULL;
     slot = &box->slots[box->tail];
     for (i = 0; i < length; ++i) slot->bytes[i] = data[i];
@@ -39,9 +56,11 @@ ores_embedded_status ores_embedded_pop(
     ores_embedded_message *slot;
     if (written == NULL) return ORES_EMBEDDED_INVALID_ARGUMENT;
     *written = 0;
-    if (box == NULL) return ORES_EMBEDDED_INVALID_ARGUMENT;
+    if (!valid_state(box) || overlaps_box(box, destination, capacity) ||
+        overlaps_box(box, written, sizeof(*written))) return ORES_EMBEDDED_INVALID_ARGUMENT;
     if (box->count == 0) return ORES_EMBEDDED_EMPTY;
     slot = &box->slots[box->head];
+    if (slot->length > ORES_EMBEDDED_MESSAGE_BYTES) return ORES_EMBEDDED_INVALID_ARGUMENT;
     if (capacity < slot->length) return ORES_EMBEDDED_BUFFER_TOO_SMALL;
     if (slot->length && destination == NULL) return ORES_EMBEDDED_INVALID_ARGUMENT;
     for (i = 0; i < slot->length; ++i) destination[i] = slot->bytes[i];
@@ -54,5 +73,5 @@ ores_embedded_status ores_embedded_pop(
 }
 
 size_t ores_embedded_count(const ores_embedded_mailbox *box) {
-    return box ? box->count : 0u;
+    return valid_state(box) ? box->count : 0u;
 }

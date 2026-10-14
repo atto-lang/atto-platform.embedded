@@ -28,3 +28,7 @@ Provide target profiles, bounded actors, capability-oriented hardware APIs and b
 5. Distinguish **worst-case response time evidence** from ordinary functional correctness.
 
 Current CTest cases run on Linux host only.
+
+## Defensive state validation
+
+The mailbox validates its indices, count and FIFO invariant before accesses, rejects impossible slot lengths, and checks for payload/output aliasing into the mailbox itself on flat-address MCU targets. Corrupted state returns INVALID_ARGUMENT rather than indexing past fixed storage. It remains a single-thread, non-ISR-safe C reference.
