@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 
 TARGET = "thumbv7m-none-eabi"
-GUEST_SYMBOL = "ores_embedded_probe"
+GUEST_SYMBOL = "oreslang_cortexm_bootstrap"
 MAX_IR_BYTES = 2 * 1024 * 1024
 MAX_OBJECT_BYTES = 4 * 1024 * 1024
 
