@@ -1,0 +1,7 @@
+// First freestanding target slice: no actor runtime, heap, awaits or host imports.
+pub fnc ores_embedded_probe(): int {
+    return sum(40, 2);
+}
+fnc sum(int a, int b): int {
+    return a + b;
+}
