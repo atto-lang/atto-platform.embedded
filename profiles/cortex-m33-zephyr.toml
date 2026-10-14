@@ -1,0 +1,12 @@
+# Proposed target descriptor, not accepted by existing Oreslang compilers.
+profile = "embedded-rtos"
+triple = "thumbv8m.main-none-eabi"
+rtos = "zephyr"
+execution = "aot"
+jit = false
+gc = false
+heap_policy = "static"
+max_actors = 8
+mailbox_capacity = 8
+message_bytes = 64
+isolation = "language-only-until-mpu-verified"
