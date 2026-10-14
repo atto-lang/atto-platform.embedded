@@ -1,6 +1,6 @@
-// First freestanding target slice: no actor runtime, heap, awaits or host imports.
-pub fnc ores_embedded_probe(): int {
-    return sum(40, 2);
+// Native Cortex-M3 AOT scalar ABI exercise: two signed i64 inputs and i64 output.
+pub fnc ores_embedded_probe(int a, int b): int {
+    return sum(a * 3, b);
 }
 fnc sum(int a, int b): int {
     return a + b;

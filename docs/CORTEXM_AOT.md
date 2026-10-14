@@ -23,3 +23,15 @@ source and compiler executable, so changes force relinking.
 
 The native mailbox is still a C reference and does not imply LLVM actor
 lowering or memory isolation. Actual source actor support is the next milestone.
+
+## ABI and build hardening (2026-10-14)
+
+The smoke now takes **two signed i64 arguments** and checks results for
+small positive values (42), negative values (-42) and a 64-bit value larger
+than UINT32_MAX (12884901930). The C values are runtime/volatile inputs
+rather than a trivially constant zero-argument return.
+The build helper verifies source/output path separation, IR/object budgets,
+ELF type/machine, the presence of a defined public guest symbol, and
+publishes only complete objects. These gates are still not a proven target
+stack bound or full actor semantics. `arm-none-eabi-nm` (or `llvm-nm`
+or GNU `nm` with ARM support) must be available.
