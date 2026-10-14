@@ -52,7 +52,7 @@ def main() -> int:
         content = ir.read_text(encoding="utf-8")
         require('target triple = "' + TARGET + '"' in content,
                 "compiler failed to mark Cortex-M triple")
-        require("@ores_embedded_probe(" in content, "expected guest symbol missing from IR")
+        require("@oreslang_cortexm_bootstrap(" in content, "expected guest symbol missing from IR")
         subprocess.run([clang, "--target=" + TARGET, "-mcpu=cortex-m3",
                         "-mthumb", "-O2", "-ffreestanding", "-fno-builtin",
                         "-fno-stack-protector", "-x", "ir", "-c", str(ir),
