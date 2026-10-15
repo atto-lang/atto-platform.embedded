@@ -17,6 +17,10 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME qemu_guest_output_validator
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_verify_qemu_output.py")
   add_executable(test_embedded_static_actors tests/test_embedded_static_actors.c)
   target_link_libraries(test_embedded_static_actors PRIVATE ores_embedded_static_actors)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
