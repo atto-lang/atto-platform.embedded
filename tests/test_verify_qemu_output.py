@@ -35,7 +35,7 @@ class QemuMarkerVerifierTests(unittest.TestCase):
 
     def test_missing_marker(self):
         with self.assertRaisesRegex(ValueError, "missing guest markers"):
-            validate(console(EXPECTED[0], EXPECTED[2]), 124)
+            validate(console(EXPECTED[0]), 124)
 
     def test_duplicate_actor_marker(self):
         with self.assertRaisesRegex(ValueError, "duplicate guest marker"):
