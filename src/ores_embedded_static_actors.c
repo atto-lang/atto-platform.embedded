@@ -35,7 +35,7 @@ void ores_embedded_actors_reset(void) {
     /* Address-valued capabilities cannot be safely reissued after reset.
      * Reject all attempts after the first spawn, even if actors are stopped
      * or a sticky failure occurred. Only a device reboot may start anew. */
-    if (current || issued != 0) { fail(); return; }
+    if (current || issued != 0 || fault) { fail(); return; }
     for (i=0; i<ORES_STATIC_ACTOR_LIMIT; ++i) {
         slots[i].active = 0;
         slots[i].head = slots[i].tail = slots[i].count = slots[i].fields = 0;
