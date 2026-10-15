@@ -44,7 +44,7 @@ add_custom_command(
     --compiler "${ORESLANG_LLVMC}" --clang "${ORE_CLANG}"
     --source "${ORE_SOURCE}" --output "${ORE_OBJECT}"
   DEPENDS "${ORE_SOURCE}" "${ORE_ROOT}/scripts/compile-cortexm-object.py"
-          "${ORESLANG_LLVMC}"
+          "${ORE_ROOT}/scripts/bounded_process.py" "${ORESLANG_LLVMC}"
   COMMENT "Compiling real Oreslang source actors to Cortex-M native object"
   VERBATIM)
 set_source_files_properties("${ORE_OBJECT}" PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
