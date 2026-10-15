@@ -1,38 +1,61 @@
-# Real Oreslang -> Cortex-M3 Zephyr application
+# Oreslang native actors in Zephyr (experimental)
 
-This is an *experimental scalar native-AOT integration* that executes an
-Oreslang-defined function on Zephyr under QEMU. It does not implement compiled
-actors, actor message transport, interrupts, MPU isolation, or hard real-time.
+The application compiles the real `zephyr/ores/firmware.ores` source using
+`oreslang-llvmc` and links that generated ARM ELF object with the allocation-free
+static actor adapter into Zephyr. It is **not** a C imitation of the Oreslang
+guest. The host `zephyr/src/main.c` validates the compiled actors and mailbox
+contract before printing the success marker.
 
-## Toolchain
+## Verified reference target: QEMU Cortex-M3
 
-- Build `oreslang-llvmc` on the host from the matching LLVM PR.
-- Install Zephyr SDK / `west`, QEMU, Python, CMake and `clang` with ARM support.
-- Run `west` **inside an initialized Zephyr west workspace**; an arbitrary application checkout is not itself a west workspace.
+Using Zephyr 4.3.0 in a west workspace with LLVM 18, Clang (ARM enabled),
+GNU Arm tools and QEMU installed:
 
 ```sh
-# Run inside a Zephyr west workspace after west update and dependencies setup.
-cd /absolute/path/to/zephyr-workspace
 west build -b qemu_cortex_m3 /absolute/path/to/oreslang-platform.embedded/zephyr \
-  -d build-oreslang -- \
+  -d build-oreslang-qemu -- \
   -DORESLANG_LLVMC=/absolute/path/to/oreslang-source.llvm/build/oreslang-llvmc
-west build -t run -d build-oreslang
+west build -t run -d build-oreslang-qemu
 ```
 
-The CMake custom build step invokes `oreslang-llvmc --target=thumbv7m-none-eabi`
-on `zephyr/ores/firmware.ores`, then `clang` emits a freestanding ARM ELF
-object. Zephyr links this object into its final firmware. A C caller checks
-`ores_embedded_probe()` returns 42, printing:
+The emulator should print both
+`ORESLANG_CORTEXM_MAILBOX_ALIAS_PASS` and
+`ORESLANG_CORTEXM_ACTORS_PASS count=2 delivery=4 allocation=static`.
+The board run does not terminate QEMU automatically. CI may use a bounded
+emulator timeout plus an *exact* success-marker assertion; a timed-out or
+otherwise terminated QEMU command alone is not evidence of guest success.
 
+The guest is compiled for `thumbv7m-none-eabi`/`cortex-m3`, checked for the
+correct ELF32 ARM machine and the exported `oreslang_cortexm_bootstrap` symbol,
+then linked into the final Zephyr image. A failure to compile, verify, or link
+the real guest is fatal; there is no host-only source fallback.
+
+## Board cross-build probes (not hardware execution)
+
+The following are candidate Zephyr 4.3.0 board selectors for build-only
+qualification. These do **not** imply that the existing Cortex-M3 object is
+a native or fully qualified port for their CPUs.
+
+```sh
+west build -b 'arduino_uno_r4@minima' /absolute/path/to/oreslang-platform.embedded/zephyr \
+  -d build-oreslang-uno-r4 -- \
+  -DORESLANG_LLVMC=/absolute/path/to/oreslang-source.llvm/build/oreslang-llvmc
+
+west build -b 'rpi_pico2/rp2350a/m33' /absolute/path/to/oreslang-platform.embedded/zephyr \
+  -d build-oreslang-pico2 -- \
+  -DORESLANG_LLVMC=/absolute/path/to/oreslang-source.llvm/build/oreslang-llvmc
 ```
-ORESLANG_CORTEXM_AOT_PASS value=42
-```
 
-A C-only mailbox smoke also runs, but the marker above requires actual Oreslang
-native guest code. Failure to compile or link the guest is fatal, with no
-host-only fallback. A grep for the pass marker after a QEMU run provides a
-minimal end-to-end smoke. A zero exit from the Zephyr main does not terminate
-QEMU; end the emulator with Ctrl-A X or automate a timeout and inspect output.
+Even a successful link only establishes compatibility for the emitted
+instruction subset and linkage in that configuration. Flashing, serial output,
+GPIO behavior, IRQ safety, stack high-water, MPU/TrustZone, and multicore
+semantics require further **physical-board** tests.
 
-This target only admits simple `int` arithmetic and same-module function calls
-until ownership, actors and runtime services are implemented.
+**Do not use the Pico (Cortex-M0+) or Pico 2 Hazard3 (RISC-V) with the current
+ARMv7-M target**. Those require separate compiler target admission/lowering;
+the full-size Raspberry Pi 4/5 belongs to the native ARM64/Linux backend.
+
+See [the board portability gates](../docs/BOARD_PORTABILITY.md) and
+[target acceptance](../docs/TARGET_ACCEPTANCE.md) before claiming hardware
+support. Previous exact-source Cortex-M3 QEMU success is recorded in
+[run 38767714704](https://github.com/benefactor-cc/backend.rs/actions/runs/38767714704).
