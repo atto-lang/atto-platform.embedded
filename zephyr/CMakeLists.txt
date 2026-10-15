@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(ores_embedded_zephyr_reference C)
+# This LLVM target is ARMv7-M Thumb-2, not ARMv6-M or RISC-V.
+if(NOT CONFIG_ARM OR NOT CONFIG_CPU_CORTEX_M)
+  message(FATAL_ERROR "Oreslang thumbv7m requires an ARM Cortex-M board.")
+endif()
+if(CONFIG_ARMV6_M_ARMV8_M_BASELINE)
+  message(FATAL_ERROR "Oreslang thumbv7m requires Thumb-2; Cortex-M0/M23 is unsupported.")
+endif()
 # The current Oreslang LLVM guest is emitted as thumbv7m-none-eabi with
 # Cortex-M3-compatible, soft-float AAPCS32 calls. Zephyr may otherwise emit
 # hard-float ARMv7E-M code that GNU ld refuses to combine with this guest.
