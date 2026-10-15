@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(ores_embedded_zephyr_reference C)
+# Zephyr 4.3.0 GNU Arm libgcc can contribute objects without .note.GNU-stack.
+# Do not let those legacy inputs silently mark the final ARM ELF GNU_STACK
+# executable. This affects ELF metadata, not MPU enforcement on the MCU.
+zephyr_ld_options(-Wl,-z,noexecstack)
 # This LLVM target is ARMv7-M Thumb-2, not ARMv6-M or RISC-V.
 if(NOT CONFIG_ARM OR NOT CONFIG_CPU_CORTEX_M)
   message(FATAL_ERROR "Oreslang thumbv7m requires an ARM Cortex-M board.")
