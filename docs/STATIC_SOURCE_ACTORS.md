@@ -132,3 +132,24 @@ The `guest-cross-actor-last`, `guest-cross-actor-deliveries`, and
 `guest-constructor-telemetry` native regressions exercise this denial.
 This guards the runtime ABI independently of current compiler source-call
 admission; it does not make arbitrary C guest callbacks memory-safe.
+
+
+## Host-only global diagnostic barrier
+
+The `ores_embedded_actors_faulted()`,
+`ores_embedded_actors_spawns()`, and `ores_embedded_actors_active()`
+entrypoints are also trusted **host-only** diagnostics. A guest
+constructor or handler must not infer global fault status or the
+existence/count of other actors. Like per-actor `last` and
+`deliveries` telemetry, all three functions now return zero and
+raise a sticky fatal session fault when called during an actor turn.
+
+The `guest-global-faulted`, `guest-global-spawns`,
+`guest-global-active`, and `guest-global-constructor`
+regressions prove this boundary at the native runtime ABI.
+
+`scripts/verify-static-actors.sh` runs **27** isolated lifecycle/security
+scenarios plus the two-actor C ABI stand-in on each of GCC/Clang at both
+`-O1` and `-O2` with AddressSanitizer and UndefinedBehaviorSanitizer:
+**112 executions** when run in full. This is a test *requirement*,
+not a claim that GitHub-hosted CI has successfully executed this head.
