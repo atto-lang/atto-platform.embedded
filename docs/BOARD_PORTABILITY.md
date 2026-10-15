@@ -10,7 +10,7 @@ a native Cortex-M4, Cortex-M33, ARMv6-M, or RISC-V backend.
 | Target | Zephyr 4.3 board name | CPU | Memory | Current evidence |
 |---|---|---|---|---|
 | QEMU reference | `qemu_cortex_m3` | ARMv7-M Cortex-M3 | 64 KiB RAM / 256 KiB flash | Real `.ores` actors executed in QEMU |
-| Arduino UNO R4 Minima | `arduino_uno_r4@minima` | ARMv7E-M Cortex-M4 | 32 KiB RAM / 256 KiB flash | Candidate for cross-build and on-board tests |
+| Arduino UNO R4 Minima | `arduino_uno_r4@minima` | ARMv7E-M Cortex-M4 | 32 KiB RAM / 256 KiB flash | **Experimental soft-ABI/CPP profile cross-link PASSED**; no physical execution yet |
 | Raspberry Pi Pico 2 | `rpi_pico2/rp2350a/m33` | ARMv8-M.main Cortex-M33 | 520 KiB RAM / 4 MiB flash | **Zephyr 4.3.0 firmware cross-link PASSED**; no physical execution yet |
 | Raspberry Pi Pico | `rpi_pico/rp2040` | ARMv6-M Cortex-M0+ | 264 KiB RAM / 2 MiB flash | **Not supported**: needs explicit Thumb-1 ARMv6-M compiler backend |
 | Raspberry Pi 4/5 | n/a for this Cortex-M application | AArch64 Cortex-A | varies | Separate native ARM64/Linux project; not Cortex-M firmware |
@@ -59,7 +59,27 @@ placement. It is not safe to disable the link checks or relabel a
 Cortex-M3 object as Cortex-M4 hard-float merely to force a pass.
 A separate private probe will evaluate a Zephyr soft-ABI configuration
 and explicit exception-table placement; it is not currently qualified.
-Pico 2 is probed independently because the first run stopped on UNO R4.
+[Private ABI experiment run 38808558925](https://github.com/benefactor-cc/backend.rs/actions/runs/38808558925)
+found an opt-in Zephyr 4.3.0 compatibility configuration:
+
+```ini
+CONFIG_FP_SOFTABI=y
+CONFIG_CPP=y
+```
+
+The **soft-ABI-only** run still failed due to misplaced `.ARM.extab`. The
+soft-ABI+CPP configuration **successfully linked** a real Oreslang-generated
+actor firmware into the Arduino UNO R4 Minima Zephyr target. Linked resource
+usage: **28,928 B FLASH** (11.77% of Zephyr's 240 KiB application FLASH region),
+**8,584 B RAM** (26.20% of 32 KiB), and 28/28 B option-setting memory.
+See the explicit `zephyr/uno_r4_compat.conf` opt-in overlay and
+[LLVM target ABI issue #423](https://github.com/ores-truffle-oreslang/oreslang-source.llvm/issues/423).
+
+This is not proof of native hard-float Oreslang LLVM codegen or actual
+physical board execution. The Zephyr 4.3.0 `CONFIG_CPP` workaround is used
+to place the `.ARM.extab` section in ROM and must be replaced by a more
+narrowly defined section placement once available. GNU-stack metadata
+warnings remain.
 
 ## Build qualification (does NOT imply a working physical port)
 
