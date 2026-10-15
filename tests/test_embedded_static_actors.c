@@ -75,6 +75,24 @@ static int marker_in_slot_prefix(const void *heap) {
     }
     return 0;
 }
+static int64_t guest_observed_telemetry;
+static int64_t telemetry_read_handler(void *heap, uint64_t domain,
+                                      uint64_t epoch, int64_t msg) {
+    (void)heap; (void)domain; (void)epoch;
+    guest_observed_telemetry=ores_embedded_actors_last(0);
+    return msg;
+}
+static int64_t delivery_read_handler(void *heap, uint64_t domain,
+                                     uint64_t epoch, int64_t msg) {
+    (void)heap; (void)domain; (void)epoch;
+    guest_observed_telemetry=(int64_t)ores_embedded_actors_deliveries(0);
+    return msg;
+}
+static void telemetry_read_init(void *heap, uint64_t domain,
+                                uint64_t epoch) {
+    init(heap,domain,epoch);
+    guest_observed_telemetry=ores_embedded_actors_last(0);
+}
 static void omitted_init(void *heap, uint64_t domain, uint64_t epoch) {
     (void)heap; (void)domain; (void)epoch;
 }
@@ -266,6 +284,34 @@ int main(int argc, char **argv) {
         assert(ores_embedded_actors_faulted());
         assert(ores_embedded_actors_active()==0);
         assert(ores_embedded_actors_deliveries(0)==0);
+    } else if (strcmp(mode,"guest-cross-actor-last")==0 ||
+               strcmp(mode,"guest-cross-actor-deliveries")==0 ||
+               strcmp(mode,"guest-constructor-telemetry")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        oreslang_source_actor_send(first,7);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_last(0)==17);
+        assert(ores_embedded_actors_deliveries(0)==1);
+        guest_observed_telemetry=-1;
+        if (strcmp(mode,"guest-constructor-telemetry")==0) {
+            second=oreslang_source_actor_spawn(telemetry_read_init,handler,1);
+            assert(!second);
+        } else {
+            second=oreslang_source_actor_spawn(init,
+                strcmp(mode,"guest-cross-actor-last")==0
+                    ? telemetry_read_handler : delivery_read_handler,1);
+            assert(second);
+            oreslang_source_actor_send(second,4);
+            oreslang_source_actor_stop(second);
+        }
+        assert(guest_observed_telemetry==0);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_last(0)==17);
+        assert(ores_embedded_actors_deliveries(0)==1);
+        assert(ores_embedded_actors_deliveries(1)==0);
     } else if (strcmp(mode,"immutable-field")==0) {
         first=oreslang_source_actor_spawn(const_init,illegal_const_write,1);
         assert(first);
