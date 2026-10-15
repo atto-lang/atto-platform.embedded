@@ -138,5 +138,18 @@ int main(void) {
                ORES_EMBEDDED_INVALID_ARGUMENT && n == 0);
         assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
     }
+    {
+        size_t j;
+        const volatile unsigned char *raw = (const volatile unsigned char *)(const void *)&box;
+        memset(&box, 0xA5, sizeof box);
+        assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+        for (j = 0; j < sizeof box; ++j)
+            assert(raw[j] == 0);
+        value = 0xF1;
+        assert(ores_embedded_push(&box, &value, 1) == ORES_EMBEDDED_OK);
+        assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+        for (j = 0; j < sizeof box; ++j)
+            assert(raw[j] == 0);
+    }
     return 0;
 }
