@@ -96,3 +96,21 @@ A freestanding Cortex-M3 **link test** combines the adapter with a C-defined
 stand-in for the generated guest bootstrap and validates an ARM executable
 without unresolved symbols. This checks ABI and linkage only; it does not
 compile real Oreslang source or execute Zephyr/QEMU. Those gates remain open.
+
+
+## Non-elidable per-slot sanitization
+
+On successful stop, failed constructor/handler cleanup, or session-wide
+fail-stop, the runtime now overwrites the **entire** retired `ActorSlot`
+(including padding, queued message values, field state and old callback
+pointers) through a `volatile unsigned char` byte loop, then restores only
+the slot's monotonically incremented generation. This avoids relying on
+ordinary dead stores that optimized C compilers may remove before slot
+reuse. Successfully completed scalar delivery telemetry is preserved in
+the already-issued reference *before* the slot is scrubbed.
+
+A queued message is similarly byte-scrubbed immediately after dequeue.
+The resulting C semantics still require **single-threaded access**:
+these volatile writes do not provide thread safety, ISR safety, hardware
+MPU isolation, cache/DMA erasure, side-channel resistance, or a
+cryptographic guarantee against physical memory recovery.
