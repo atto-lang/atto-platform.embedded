@@ -93,6 +93,26 @@ static void telemetry_read_init(void *heap, uint64_t domain,
     init(heap,domain,epoch);
     guest_observed_telemetry=ores_embedded_actors_last(0);
 }
+/* In guest callbacks these whole-session diagnostics must be opaque.
+ * A call must set sticky fault and return a non-disclosing zero. */
+static unsigned global_query_kind;
+static unsigned global_query_observed;
+static int64_t global_query_handler(void *heap, uint64_t domain,
+                                    uint64_t epoch, int64_t msg) {
+    (void)heap; (void)domain; (void)epoch;
+    if (global_query_kind == 0)
+        global_query_observed=(unsigned)ores_embedded_actors_faulted();
+    else if (global_query_kind == 1)
+        global_query_observed=ores_embedded_actors_spawns();
+    else
+        global_query_observed=ores_embedded_actors_active();
+    return msg;
+}
+static void global_query_constructor(void *heap, uint64_t domain,
+                                     uint64_t epoch) {
+    init(heap,domain,epoch);
+    global_query_observed=ores_embedded_actors_spawns();
+}
 static void omitted_init(void *heap, uint64_t domain, uint64_t epoch) {
     (void)heap; (void)domain; (void)epoch;
 }
@@ -310,6 +330,36 @@ int main(int argc, char **argv) {
         assert(ores_embedded_actors_faulted());
         assert(ores_embedded_actors_active()==0);
         assert(ores_embedded_actors_last(0)==17);
+        assert(ores_embedded_actors_deliveries(0)==1);
+        assert(ores_embedded_actors_deliveries(1)==0);
+    } else if (strcmp(mode,"guest-global-faulted")==0 ||
+               strcmp(mode,"guest-global-spawns")==0 ||
+               strcmp(mode,"guest-global-active")==0 ||
+               strcmp(mode,"guest-global-constructor")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        oreslang_source_actor_send(first,6);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_last(0)==16);
+        assert(ores_embedded_actors_spawns()==1);
+        global_query_observed=999;
+        global_query_kind=strcmp(mode,"guest-global-faulted")==0 ? 0 :
+            strcmp(mode,"guest-global-spawns")==0 ? 1 : 2;
+        if (strcmp(mode,"guest-global-constructor")==0) {
+            second=oreslang_source_actor_spawn(global_query_constructor,
+                                                handler,1);
+            assert(!second);
+        } else {
+            second=oreslang_source_actor_spawn(init,global_query_handler,1);
+            assert(second);
+            oreslang_source_actor_send(second,8);
+            oreslang_source_actor_stop(second);
+        }
+        assert(global_query_observed==0);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_last(0)==16);
         assert(ores_embedded_actors_deliveries(0)==1);
         assert(ores_embedded_actors_deliveries(1)==0);
     } else if (strcmp(mode,"immutable-field")==0) {
