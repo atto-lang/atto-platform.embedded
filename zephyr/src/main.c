@@ -41,10 +41,10 @@ static int mailbox_alias_smoke(void) {
 
 int main(void) {
     if (!mailbox_alias_smoke()) {
-        printk("ORESLANG_CORTEXM_MAILBOX_ALIAS_FAIL\\n");
+        printk("ORESLANG_CORTEXM_MAILBOX_ALIAS_FAIL\n");
         return -1;
     }
-    printk("ORESLANG_CORTEXM_MAILBOX_ALIAS_PASS\\n");
+    printk("ORESLANG_CORTEXM_MAILBOX_ALIAS_PASS\n");
     ores_embedded_actors_reset();
     const int64_t value = oreslang_cortexm_bootstrap();
     if (value != INT64_C(43) || ores_embedded_actors_faulted() ||
