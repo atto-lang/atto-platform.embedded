@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 
 TARGET = "thumbv7m-none-eabi"
-GUEST_SYMBOL = "ores_embedded_probe"
+GUEST_SYMBOL = "oreslang_cortexm_bootstrap"
 MAX_IR_BYTES = 2 * 1024 * 1024
 MAX_OBJECT_BYTES = 4 * 1024 * 1024
 
@@ -52,7 +52,7 @@ def main() -> int:
         content = ir.read_text(encoding="utf-8")
         require('target triple = "' + TARGET + '"' in content,
                 "compiler failed to mark Cortex-M triple")
-        require("@ores_embedded_probe(" in content, "expected guest symbol missing from IR")
+        require("@oreslang_cortexm_bootstrap(" in content, "expected guest symbol missing from IR")
         subprocess.run([clang, "--target=" + TARGET, "-mcpu=cortex-m3",
                         "-mthumb", "-O2", "-ffreestanding", "-fno-builtin",
                         "-fno-stack-protector", "-x", "ir", "-c", str(ir),

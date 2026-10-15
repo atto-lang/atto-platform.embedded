@@ -37,3 +37,17 @@ function, checks that the result is 42, and emits the pass marker under QEMU.
 
 The test proves native execution of an intentionally narrow arithmetic subset,
 not source-level actor/runtime or device parity.
+
+
+## Experimental source actor firmware
+
+A restricted real Oreslang `.ores` program now defines two scalar actor
+types and invokes source `spawn`/`send`/`stop`. The C adapter uses eight
+static actor slots, generation-tagged refs and fixed FIFO queues, and links
+compiler-generated actor handlers into Zephyr/QEMU. Host sanitizer tests
+cover mailbox overflow and stale capabilities. Read
+[static source actor contract](docs/STATIC_SOURCE_ACTORS.md).
+
+The current proof is limited to source **bootstrap-to-actor** messaging and
+handler execution; actor-to-actor sends from inside handlers, await,
+supervision, and hardware isolation are not implemented.
