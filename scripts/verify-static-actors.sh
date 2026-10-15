@@ -18,6 +18,14 @@ for cc in gcc clang; do
     UBSAN_OPTIONS="halt_on_error=1" "$tmp/actor-$cc" "$scenario"
     echo "PASS [$cc] $scenario"
   done
+  "$cc" -std=c11 -Wall -Wextra -Wpedantic -Werror -UNDEBUG \
+    -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I"$root/include" "$root/src/ores_embedded_static_actors.c" \
+    "$root/tests/cortexm_static_actor_link_smoke.c" \
+    "$root/tests/host_static_actor_abi_driver.c" -o "$tmp/abi-$cc"
+  ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
+  UBSAN_OPTIONS="halt_on_error=1" "$tmp/abi-$cc"
+  echo "PASS [$cc] two-actor ABI stand-in execution (not .ores or QEMU)"
 done
 clang --target=thumbv7m-none-eabi -mcpu=cortex-m3 -mthumb \
   -ffreestanding -fno-builtin -fno-stack-protector -std=c11 -O2 \
