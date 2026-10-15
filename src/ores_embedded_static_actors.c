@@ -234,4 +234,7 @@ void oreslang_source_actor_stop(void* actor) {
     for (i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i) slot->mailbox[i]=0;
     slot->init=0; slot->handler=0;
     slot->phase=0; slot->fields=0;
+    slot->head=slot->tail=slot->count=0;
+    slot->domain=slot->epoch=0;
+    slot->last=0; slot->deliveries=0;
 }
