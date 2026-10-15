@@ -1,56 +1,67 @@
-# Independent Cortex-M static actor audit — 2026-10-14
+# Exact-source Cortex-M static actor audit — 2026-10-14
 
-## Exact-source verification
+## Source provenance
 
-The source files in this PR were fetched through the GitHub connector and
-checked against the *locally executed bytes* using `git hash-object`.
+Each C source file and the reproducible verification script were fetched
+through the GitHub connector from this draft branch. Git blob SHA-1 values
+were compared to the bytes actually compiled and run in the local container.
 
 | File | Git blob SHA-1 |
 |---|---|
-| `src/ores_embedded_static_actors.c` | `2419c2c9555bf731d34e6e1b0e283006d691145e` |
+| `src/ores_embedded_static_actors.c` | `aceb3c47b6bb748f1a788d0a67182df7394dacb0` |
 | `include/ores_embedded_static_actors.h` | `9644dc7f58a66d4cc8d8dbc4798b7e028bbf3b94` |
-| `tests/test_embedded_static_actors.c` | `755ae4fb12031dfbba56f278c2472953b440a5be` |
-| `scripts/verify-static-actors.sh` | `912fba47c3edd60c1bba3dd4880116bf479167d6` |
+| `tests/test_embedded_static_actors.c` | `74a69b9b2ff080e2b895f17a9a68cfb5b95161fc` |
+| `scripts/verify-static-actors.sh` | `242191486bc7cea81d9e28009f83fe58389189cd` |
+| `tests/cortexm_static_actor_link_smoke.c` | `6741ab5d8fc4b2d02e8bd93f7f34f4466b1d1afd` |
+| `tests/host_static_actor_abi_driver.c` | `f9ac87afc6703d540c079a6b18113a6bc0124051` |
 
-**PASS:** 22/22 standalone runtime test executions (11 distinct scenarios
-each under GCC and Clang), using `-std=c11 -Wall -Wextra -Wpedantic -Werror
--O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -UNDEBUG`
-with `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1` and
+## Host and ARM results
+
+**PASS: 38/38 independent GCC and Clang sanitizer-backed executions.**
+The suite contains 18 runtime/lifecycle scenarios per compiler, plus one
+two-actor guest ABI stand-in execution per compiler. It uses
+`-std=c11 -Wall -Wextra -Wpedantic -Werror -O1 -g`,
+`-fsanitize=address,undefined -fno-omit-frame-pointer -UNDEBUG`,
+`ASAN_OPTIONS=detect_leaks=1:halt_on_error=1` and
 `UBSAN_OPTIONS=halt_on_error=1`.
 
-Scenarios: `basic`, `stale`, `overflow`, `reset`,
-`fault-before-spawn-reset`, `bad-initializer`,
-`missing-initializer`, `bad-handler`, `fault-after-success`,
-`immutable-field`, `double-stop`.
+The lifecycle cases cover: normal delivery, stale references, mailbox
+overflow, *global cleanup after overflow*, invalid telemetry lookup,
+all eight actor slots carrying sixteen messages each, actor-slot
+exhaustion, illegal reset, sticky fault before spawn, invalid/missing
+constructor state, handler corruption, partial-delivery telemetry,
+fault in one actor with another live, cross-actor heap read,
+reentrant send, immutable write and double stop.
 
-**PASS:** Clang 17 freestanding Cortex-M3 object compilation using
+**PASS: ARM Cortex-M3 freestanding object compilation**, Clang 17
 `--target=thumbv7m-none-eabi -mcpu=cortex-m3 -mthumb -O2`.
-The resulting ARM EABI object contains no unresolved external function
-symbols and has **2,324 bytes of `.bss`**, verified with `size -A`.
-A compile-time admission assertion now budgets 3,072 bytes for the
-adapter's persistent state. This bound does not include unrelated kernel
-state, stack, linker padding or other firmware components.
+Measured persistent adapter `.bss` is 2,324 bytes versus a 3,072-byte
+compile-time storage ceiling. A negative build with a deliberately reduced
+1,024-byte limit fails with the expected static assertion.
 
-**PASS:** Clang static analyzer and GCC `-fanalyzer` completed without
-warnings under `-Werror` for the same actor runtime translation unit.
+**PASS: Freestanding Cortex-M3 executable link** using LLVM lld and a
+two-actor ABI stand-in compiled from C, with no unresolved symbols.
+This validates C linker and ABI compatibility only. The stand-in is
+**not** an Oreslang compiler-generated source program and the ARM
+executable was not run under QEMU.
 
-## Additional isolation fixes
+**PASS:** GCC `-fanalyzer` and Clang `--analyze` of the actor runtime
+translation unit with warnings promoted to errors.
 
-- Retire and scrub an actor after constructor or handler faults, after the
-  generated callback returns. Previously committed per-reference telemetry
-  survives; an in-flight failed message does not count as delivered.
-- Reset can no longer clear sticky faults before the first spawn.
-- Compiler-specific and runtime ABI behavior remain separately gated.
+Run all reproducible checks locally using
+`bash scripts/verify-static-actors.sh`.
 
-Reproduce with `bash scripts/verify-static-actors.sh`. Native test
-execution uses no GitHub Actions billing or secrets.
+## CI / merge gate
 
-## What this does not verify
+Current private exact-source CI mirror:
+https://github.com/canonical-cloud/canonical-docs/tree/ci/ores-cortexm-actor-hardening-20261014
 
-Neither the updated LLVM `.ores` source compiler tests nor the updated
-Zephyr 4.3.0/QEMU Cortex-M3 end-to-end actor firmware have passed for
-these commits. The [exact-source private CI branch](https://github.com/canonical-cloud/canonical-docs/tree/ci/ores-cortexm-actor-hardening-20261014)
-contains the updated source; prior Actions attempts ended before any
-runner step. These PRs must stay unmerged until those remaining gates
-pass. There is no formal WCET, stack budget, hardware MPU isolation, or
-whole-firmware allocation-free proof.
+The GitHub Actions jobs in the private mirror continue to fail before any
+runner steps execute. That is an infrastructure/startup failure, not a
+compiler or firmware test result. The exact-source LLVM compiler regression
+suite and Zephyr 4.3.0 Cortex-M3 QEMU firmware execution remain **unverified
+for this hardening revision**.
+
+Keep Embedded PR #5 and LLVM PR #388 **draft and unmerged** until those
+checks pass. There is no formal bound on Zephyr stack/WCET or proof of
+MPU-backed isolation or whole-system allocation-free operation.
