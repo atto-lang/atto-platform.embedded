@@ -1,46 +1,56 @@
-# Independent local audit — Cortex-M actor runtime
+# Independent Cortex-M static actor audit — 2026-10-14
 
-Date: 2026-10-14 (America/Lima); test environment: Linux container, GCC 14.2.0, Clang 17.0.0.
+## Exact-source verification
 
-## Source provenance
+The source files in this PR were fetched through the GitHub connector and
+checked against the *locally executed bytes* using `git hash-object`.
 
-The three C source artifacts were fetched from the private hardening branch
-`audit/cortexm-static-actor-isolation-20261014`; their exact Git blob SHA-1
-values were cross-checked against the GitHub connector results before testing.
-
-| GitHub path | Git blob SHA-1 |
+| File | Git blob SHA-1 |
 |---|---|
-| `src/ores_embedded_static_actors.c` | `984d59fdcfac42744beeccd48bcf20f0efc79e9e` |
-| `include/ores_embedded_static_actors.h` | `8d706a914fe40e8ee3e7d92aa3a8b21e3e6ebfbb` |
-| `tests/test_embedded_static_actors.c` | `257addd5afd08eb157619ffc7a37612be348b693` |
+| `src/ores_embedded_static_actors.c` | `2419c2c9555bf731d34e6e1b0e283006d691145e` |
+| `include/ores_embedded_static_actors.h` | `9644dc7f58a66d4cc8d8dbc4798b7e028bbf3b94` |
+| `tests/test_embedded_static_actors.c` | `755ae4fb12031dfbba56f278c2472953b440a5be` |
+| `scripts/verify-static-actors.sh` | `912fba47c3edd60c1bba3dd4880116bf479167d6` |
 
-## Results
-
-**PASS: 18/18 standalone runtime invocations**, each scenario under
-both GCC and Clang with `-std=c11 -Wall -Wextra -Wpedantic -Werror`,
-`-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -UNDEBUG`,
-`ASAN_OPTIONS=detect_leaks=1:halt_on_error=1`, and
+**PASS:** 22/22 standalone runtime test executions (11 distinct scenarios
+each under GCC and Clang), using `-std=c11 -Wall -Wextra -Wpedantic -Werror
+-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -UNDEBUG`
+with `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1` and
 `UBSAN_OPTIONS=halt_on_error=1`.
 
-Nine scenarios per compiler: `basic`, `stale`, `overflow`, `reset`,
-`bad-initializer`, `missing-initializer`, `bad-handler`,
+Scenarios: `basic`, `stale`, `overflow`, `reset`,
+`fault-before-spawn-reset`, `bad-initializer`,
+`missing-initializer`, `bad-handler`, `fault-after-success`,
 `immutable-field`, `double-stop`.
 
-**PASS:** The same actor-runtime C source cross-compiled with Clang 17
-`--target=thumbv7m-none-eabi -mcpu=cortex-m3 -mthumb -O2 -ffreestanding`.
-`readelf` identified a little-endian ELF32 relocatable object targeting
-ARM EABI5. The object had no unresolved external function symbols.
+**PASS:** Clang 17 freestanding Cortex-M3 object compilation using
+`--target=thumbv7m-none-eabi -mcpu=cortex-m3 -mthumb -O2`.
+The resulting ARM EABI object contains no unresolved external function
+symbols and has **2,324 bytes of `.bss`**, verified with `size -A`.
+A compile-time admission assertion now budgets 3,072 bytes for the
+adapter's persistent state. This bound does not include unrelated kernel
+state, stack, linker padding or other firmware components.
 
-Repro: `bash scripts/verify-static-actors.sh` on a host with GCC, Clang,
-and (preferably) `readelf`. This script performs all the above checks.
+**PASS:** Clang static analyzer and GCC `-fanalyzer` completed without
+warnings under `-Werror` for the same actor runtime translation unit.
 
-## Limits; merge blocked
+## Additional isolation fixes
 
-This is **local runtime verification**, not a green GitHub Actions result.
-The cross-compiled C object does **not** prove that an Oreslang actor
-`.ores` source was compiled/linked/booted in Zephyr. LLVM compiler source
-regression tests and exact-source Zephyr/QEMU execution are still required.
-Current private Actions runs fail before runner steps, including retry attempt
-2 for [run 38661610241](https://github.com/canonical-cloud/canonical-docs/actions/runs/38661610241).
-Keep LLVM PR #388 and Embedded PR #5 as draft until those two remaining
-gates pass; no merge or certified memory/WCET guarantee is claimed.
+- Retire and scrub an actor after constructor or handler faults, after the
+  generated callback returns. Previously committed per-reference telemetry
+  survives; an in-flight failed message does not count as delivered.
+- Reset can no longer clear sticky faults before the first spawn.
+- Compiler-specific and runtime ABI behavior remain separately gated.
+
+Reproduce with `bash scripts/verify-static-actors.sh`. Native test
+execution uses no GitHub Actions billing or secrets.
+
+## What this does not verify
+
+Neither the updated LLVM `.ores` source compiler tests nor the updated
+Zephyr 4.3.0/QEMU Cortex-M3 end-to-end actor firmware have passed for
+these commits. The [exact-source private CI branch](https://github.com/canonical-cloud/canonical-docs/tree/ci/ores-cortexm-actor-hardening-20261014)
+contains the updated source; prior Actions attempts ended before any
+runner step. These PRs must stay unmerged until those remaining gates
+pass. There is no formal WCET, stack budget, hardware MPU isolation, or
+whole-firmware allocation-free proof.
