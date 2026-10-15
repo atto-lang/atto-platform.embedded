@@ -42,7 +42,22 @@ static int mailbox_alias_smoke(void) {
     return 1;
 }
 
+static int mailbox_init_bytes_smoke(void) {
+    static ores_embedded_mailbox box;
+    volatile unsigned char *p = (volatile unsigned char *)(void *)&box;
+    size_t i;
+    for (i=0; i<sizeof box; ++i) p[i]=0xA5;
+    if (ores_embedded_init(&box)!=ORES_EMBEDDED_OK) return 0;
+    for (i=0; i<sizeof box; ++i) if(p[i]) return 0;
+    return 1;
+}
+
 int main(void) {
+    if (!mailbox_init_bytes_smoke()) {
+        printk("ORESLANG_CORTEXM_MAILBOX_INIT_FAIL\n");
+        return -1;
+    }
+    printk("ORESLANG_CORTEXM_MAILBOX_INIT_PASS\n");
     if (!mailbox_alias_smoke()) {
         printk("ORESLANG_CORTEXM_MAILBOX_ALIAS_FAIL\n");
         return -1;

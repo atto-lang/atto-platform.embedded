@@ -27,11 +27,9 @@ static void scrub_message(ores_embedded_message *slot) {
 ores_embedded_status ores_embedded_init(ores_embedded_mailbox *box) {
     size_t i;
     if (box == NULL) return ORES_EMBEDDED_INVALID_ARGUMENT;
-    for (i = 0; i < ORES_EMBEDDED_QUEUE_CAPACITY; ++i)
-        scrub_message(&box->slots[i]);
-    box->head = 0;
-    box->tail = 0;
-    box->count = 0;
+    volatile unsigned char *dst = (volatile unsigned char *)(void *)box;
+    for (i = 0; i < sizeof(*box); ++i)
+        dst[i] = 0;
     return ORES_EMBEDDED_OK;
 }
 
