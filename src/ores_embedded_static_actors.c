@@ -159,27 +159,27 @@ void ores_actor_i64_heap_field_write(void* heap, uint64_t domain,
         !a->mutable_field[index]) { fail(); return; }
     a->state[index]=value;
 }
-/* Retire only at a host/runtime boundary, after the generated guest callback
- * has returned. A failed constructor or handler may have written partial
- * private state; never leave that state in an active slot after a sticky fault.
- * Preserve only previously committed scalar telemetry for the issued ref. */
+/* Volatile byte stores are observable side effects in the C abstract
+ * machine: unlike ordinary dead stores, they cannot simply be discarded
+ * when the compiler sees the next actor constructor overwrite the slot.
+ * This is a single-threaded, CPU-side scrub, NOT protection from DMA,
+ * physical probing, platform caches, a compromised kernel or an ISR. */
+static void scrub_bytes(void *address, size_t length) {
+    volatile unsigned char *dst=(volatile unsigned char*)address;
+    size_t i;
+    for (i=0; i<length; ++i) dst[i]=0;
+}
+/* Retire only after a guest callback has returned. Scrub even struct
+ * padding, function pointers and queued payloads; retain generation
+ * across slot reuse, and snapshot only completed delivery telemetry. */
 static void retire_slot(ActorSlot *slot, ActorRef *ref) {
-    unsigned i;
+    const uint32_t generation=slot->generation;
     ref->last=slot->last;
     ref->deliveries=slot->deliveries;
     slot->active=0;
     active_count--;
-    for (i=0; i<ORES_STATIC_ACTOR_FIELDS; ++i) {
-        slot->state[i]=0;
-        slot->mutable_field[i]=0;
-        slot->initialized_field[i]=0;
-    }
-    for (i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i) slot->mailbox[i]=0;
-    slot->init=0; slot->handler=0;
-    slot->phase=0; slot->fields=0;
-    slot->head=slot->tail=slot->count=0;
-    slot->domain=slot->epoch=0;
-    slot->last=0; slot->deliveries=0;
+    scrub_bytes(slot,sizeof(*slot));
+    slot->generation=generation;
 }
 void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
         int64_t (*handler)(void*, uint64_t, uint64_t, int64_t), uint64_t fields) {
@@ -241,7 +241,8 @@ void oreslang_source_actor_stop(void* actor) {
     if (!slot || fault || current) { fail(); return; }
     while (slot->count && !fault) {
         int64_t value=slot->mailbox[slot->head];
-        slot->mailbox[slot->head]=0;
+        scrub_bytes(&slot->mailbox[slot->head],
+                    sizeof(slot->mailbox[slot->head]));
         slot->head=(uint8_t)((slot->head+1u)%ORES_STATIC_MAILBOX_CAPACITY);
         slot->count--;
         current=slot;
