@@ -40,6 +40,23 @@ if command -v readelf >/dev/null 2>&1; then
   fi
 fi
 echo 'PASS ARM Cortex-M3 freestanding runtime object (ELF32 ARM)'
+# Negative proof: a deliberately 1-KiB budget must refuse this exact runtime.
+mkdir -p "$tmp/limited-include"
+sed 's/#define ORES_STATIC_ACTOR_STORAGE_BUDGET_BYTES 3072u/#define ORES_STATIC_ACTOR_STORAGE_BUDGET_BYTES 1024u/' \
+  "$root/include/ores_embedded_static_actors.h" > "$tmp/limited-include/ores_embedded_static_actors.h"
+if clang --target=thumbv7m-none-eabi -mcpu=cortex-m3 -mthumb \
+  -ffreestanding -std=c11 -O2 -Werror -I"$tmp/limited-include" \
+  -c "$root/src/ores_embedded_static_actors.c" -o "$tmp/should-not-compile.o" \
+  2> "$tmp/limited.err"; then
+  echo 'ERROR: undersized static actor storage was not rejected' >&2
+  exit 1
+fi
+if ! grep -q 'static actor adapter exceeds' "$tmp/limited.err"; then
+  cat "$tmp/limited.err" >&2
+  echo 'ERROR: expected static budget diagnostic was absent' >&2
+  exit 1
+fi
+echo 'PASS negative 1-KiB static storage budget rejected at compile-time'
 # This is an ABI/linker smoke using C stand-ins for generated guest functions,
 # not a replacement for running real .ores source through LLVM and Zephyr.
 if ! command -v ld.lld >/dev/null 2>&1; then
