@@ -76,5 +76,30 @@ int main(void) {
         assert(ores_embedded_pop(&aliased.box, output, sizeof output, &n) == ORES_EMBEDDED_OK);
         assert(n == 1 && output[0] == 77);
     }
+    /* Two external output regions may be disjoint from mailbox storage
+     * but still alias one another. Reject without changing either output. */
+    {
+        union {
+            size_t alignment;
+            uint8_t bytes[ORES_EMBEDDED_MESSAGE_BYTES];
+        } scratch;
+        unsigned char before[sizeof scratch];
+        assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+        value = 91;
+        assert(ores_embedded_push(&box, &value, 1) == ORES_EMBEDDED_OK);
+        memset(&scratch, 0x5a, sizeof scratch);
+        memcpy(before, &scratch, sizeof before);
+        assert(ores_embedded_pop(&box, scratch.bytes, sizeof scratch.bytes,
+                                &scratch.alignment) == ORES_EMBEDDED_INVALID_ARGUMENT);
+        assert(memcmp(before, &scratch, sizeof before) == 0);
+        assert(ores_embedded_count(&box) == 1);
+        /* Adjacent-but-disjoint outputs are legal. */
+        assert(ores_embedded_pop(&box, scratch.bytes + sizeof(size_t),
+                                sizeof scratch.bytes - sizeof(size_t),
+                                &scratch.alignment) == ORES_EMBEDDED_OK);
+        assert(scratch.alignment == 1);
+        assert(scratch.bytes[sizeof(size_t)] == 91);
+        assert(ores_embedded_count(&box) == 0);
+    }
     return 0;
 }
