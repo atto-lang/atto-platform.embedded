@@ -11,13 +11,33 @@ a native Cortex-M4, Cortex-M33, ARMv6-M, or RISC-V backend.
 |---|---|---|---|---|
 | QEMU reference | `qemu_cortex_m3` | ARMv7-M Cortex-M3 | 64 KiB RAM / 256 KiB flash | Real `.ores` actors executed in QEMU |
 | Arduino UNO R4 Minima | `arduino_uno_r4@minima` | ARMv7E-M Cortex-M4 | 32 KiB RAM / 256 KiB flash | Candidate for cross-build and on-board tests |
-| Raspberry Pi Pico 2 | `rpi_pico2/rp2350a/m33` | ARMv8-M.main Cortex-M33 | 520 KiB RAM / 4 MiB flash | Candidate for cross-build and on-board tests |
+| Raspberry Pi Pico 2 | `rpi_pico2/rp2350a/m33` | ARMv8-M.main Cortex-M33 | 520 KiB RAM / 4 MiB flash | **Zephyr 4.3.0 firmware cross-link PASSED**; no physical execution yet |
 | Raspberry Pi Pico | `rpi_pico/rp2040` | ARMv6-M Cortex-M0+ | 264 KiB RAM / 2 MiB flash | **Not supported**: needs explicit Thumb-1 ARMv6-M compiler backend |
 | Raspberry Pi 4/5 | n/a for this Cortex-M application | AArch64 Cortex-A | varies | Separate native ARM64/Linux project; not Cortex-M firmware |
 | Pico 2 Hazard3 | `rpi_pico2/rp2350a/hazard3` | RISC-V | 520 KiB RAM / 4 MiB flash | **Not supported** by this ARM Cortex-M output |
 
 Pico 2 and UNO R4 board names are pinned to Zephyr **v4.3.0**. The qualifiers
 are not guaranteed stable across later Zephyr releases.
+
+## Raspberry Pi Pico 2 source-derived firmware cross-build — PASSED
+
+[Private cross-build run 38808266845](https://github.com/benefactor-cc/backend.rs/actions/runs/38808266845)
+successfully compiled and linked the real compiler-generated `.ores` actor
+object into **Zephyr 4.3.0 for `rpi_pico2/rp2350a/m33`**. The final ARM ELF
+contained `oreslang_cortexm_bootstrap` and
+`oreslang_actor_Producer_on_message`, verified using `arm-none-eabi-nm`.
+
+The linker reported **24,324 B FLASH (0.58% of 4 MiB)** and
+**7,904 B RAM (1.48% of 520 KiB)**. An ARMv7-M/soft-ABI guest subset
+linked into the Cortex-M33 target, but this is **not** native ARMv8-M
+instruction lowering and does not prove the image boots on an RP2350.
+No physical execution, GPIO, ISR, stack-high-water, or MPU security test
+has been performed. GNU libgcc emitted the existing `.ARM.extab` and
+GNU-stack metadata linker warnings; review remains necessary.
+
+The overall Actions workflow was marked failed because its subsequent
+Arduino UNO R4 build failed. The **Pico 2 sub-build passed**. Treat these
+as distinct results.
 
 ## Arduino UNO R4 initial cross-build failure (2026-10-15)
 
