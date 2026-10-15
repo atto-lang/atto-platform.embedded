@@ -32,19 +32,31 @@ the real guest is fatal; there is no host-only source fallback.
 
 ## Board cross-build probes (not hardware execution)
 
-The following are candidate Zephyr 4.3.0 board selectors for build-only
-qualification. These do **not** imply that the existing Cortex-M3 object is
+The following Zephyr 4.3.0 board selectors have **passed firmware cross-link**
+with the current integer-only Oreslang guest subset on a private runner.
+The UNO R4 requires the explicitly opt-in `uno_r4_compat.conf` overlay;
+without it, the linker rejects a hard/soft-float ABI mismatch and places
+`.ARM.extab` in the wrong Renesas option-setting memory region. These do **not** imply that the existing Cortex-M3 object is
 a native or fully qualified port for their CPUs.
 
 ```sh
 west build -b 'arduino_uno_r4@minima' /absolute/path/to/oreslang-platform.embedded/zephyr \
   -d build-oreslang-uno-r4 -- \
-  -DORESLANG_LLVMC=/absolute/path/to/oreslang-source.llvm/build/oreslang-llvmc
+  -DORESLANG_LLVMC=/absolute/path/to/oreslang-source.llvm/build/oreslang-llvmc \
+  -DEXTRA_CONF_FILE=/absolute/path/to/oreslang-platform.embedded/zephyr/uno_r4_compat.conf
 
 west build -b 'rpi_pico2/rp2350a/m33' /absolute/path/to/oreslang-platform.embedded/zephyr \
   -d build-oreslang-pico2 -- \
   -DORESLANG_LLVMC=/absolute/path/to/oreslang-source.llvm/build/oreslang-llvmc
 ```
+
+Pico 2: [successful source-derived cross-link](https://github.com/benefactor-cc/backend.rs/actions/runs/38808266845),
+24,324 B flash / 7,904 B RAM. UNO R4:
+[successful experimental soft-ABI + CPP profile](https://github.com/benefactor-cc/backend.rs/actions/runs/38808558925),
+28,928 B flash / 8,584 B RAM; the soft-ABI-only experiment failed
+on the exception-table linker region. See
+[LLVM target ABI issue #423](https://github.com/ores-truffle-oreslang/oreslang-source.llvm/issues/423)
+for the eventual native ARMv7E-M hard-float implementation.
 
 Even a successful link only establishes compatibility for the emitted
 instruction subset and linkage in that configuration. Flashing, serial output,
