@@ -19,6 +19,28 @@ a native Cortex-M4, Cortex-M33, ARMv6-M, or RISC-V backend.
 Pico 2 and UNO R4 board names are pinned to Zephyr **v4.3.0**. The qualifiers
 are not guaranteed stable across later Zephyr releases.
 
+## Arduino UNO R4 initial cross-build failure (2026-10-15)
+
+[Exact-source private Actions run 38807500395](https://github.com/benefactor-cc/backend.rs/actions/runs/38807500395)
+compiled the .ores actor object and the Zephyr 4.3.0 UNO R4 Minima
+application, but **failed at final link**. The board enables ARMv7E-M
+hard-float VFP register calling conventions; the current guest object is
+ARMv7-M soft-float. The linker rejected mixing those ABIs:
+
+```
+zephyr_pre0.elf uses VFP register arguments,
+app/libapp.a(oreslang_cortexm_probe.o) does not
+```
+
+The same link exposed an unrelated orphan `.ARM.extab` placement
+into `OFS_OSIS_MEMORY` (24-byte region overflow). The solution needs
+**both** verified ABI agreement and correct Zephyr/Renesas section
+placement. It is not safe to disable the link checks or relabel a
+Cortex-M3 object as Cortex-M4 hard-float merely to force a pass.
+A separate private probe will evaluate a Zephyr soft-ABI configuration
+and explicit exception-table placement; it is not currently qualified.
+Pico 2 is probed independently because the first run stopped on UNO R4.
+
 ## Build qualification (does NOT imply a working physical port)
 
 All builds must use the actual `zephyr/ores/firmware.ores` program and a
