@@ -114,3 +114,21 @@ The resulting C semantics still require **single-threaded access**:
 these volatile writes do not provide thread safety, ISR safety, hardware
 MPU isolation, cache/DMA erasure, side-channel resistance, or a
 cryptographic guarantee against physical memory recovery.
+
+
+## Actor-turn telemetry boundary (2026-10-14 audit)
+
+`ores_embedded_actors_last(index)` and
+`ores_embedded_actors_deliveries(index)` are **trusted host-only**
+postmortem/diagnostic APIs. They must not be callable from any guest actor
+constructor or message handler, because an arbitrary index would otherwise
+disclose another actor's last returned value and delivery count despite
+actor-private field access. Both functions now reject `current != NULL`,
+return zero, set a sticky session fault, and retire all live actor slots at
+the safe callback boundary. Host access **outside** actor execution still
+retrieves completed-turn telemetry, including after a fatal session fault.
+
+The `guest-cross-actor-last`, `guest-cross-actor-deliveries`, and
+`guest-constructor-telemetry` native regressions exercise this denial.
+This guards the runtime ABI independently of current compiler source-call
+admission; it does not make arbitrary C guest callbacks memory-safe.
