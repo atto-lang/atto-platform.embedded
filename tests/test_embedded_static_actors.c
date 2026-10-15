@@ -90,6 +90,14 @@ int main(int argc, char **argv) {
         assert(ores_embedded_actors_spawns()==1);
         assert(oreslang_source_actor_spawn(init,handler,1)==0);
         assert(ores_embedded_actors_spawns()==1);
+    } else if (strcmp(mode,"fault-before-spawn-reset")==0) {
+        oreslang_source_actor_send(0,19); /* no actor has been issued */
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_spawns()==0);
+        ores_embedded_actors_reset();
+        assert(ores_embedded_actors_faulted());
+        assert(oreslang_source_actor_spawn(init,handler,1)==0);
+        assert(ores_embedded_actors_spawns()==0);
     } else if (strcmp(mode,"bad-initializer")==0) {
         first=oreslang_source_actor_spawn(duplicate_init,handler,1);
         assert(!first && ores_embedded_actors_faulted());
