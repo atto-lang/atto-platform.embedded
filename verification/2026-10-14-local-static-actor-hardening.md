@@ -71,3 +71,42 @@ No thread/ISR-safety, MCU MPU memory protection, overall firmware RAM
 budget, stack/WCET analysis, cache/DMA wiping, or physical-remanence
 guarantee is claimed. Leave Embedded PR #5 and LLVM PR #388 **draft and
 unmerged** pending the compiler and QEMU acceptance gates.
+
+
+## Follow-up hardening — global diagnostic isolation (new revision)
+
+**Current Embedded source head (as of this follow-up):**
+`78851fe7b0532835b11803cecd444405c2812d76`.
+
+The previous sections report **96/96 verified host executions on an
+earlier revision**, specifically runtime Git blob
+`80bfe0959c56a038d0b7be0d14eb8ed16907644f`
+and tests Git blob
+`392c61f1d1d4a0dbcd5d4cdb61d3b75d227f1c1a`.
+Those positive results are **not** test results for the new revision.
+
+### New finding and committed fix
+
+The global functions `ores_embedded_actors_faulted`,
+`ores_embedded_actors_spawns`, and `ores_embedded_actors_active` were
+still callable during an actor callback, disclosing overall session
+state/population. They now return zero, set a sticky session fault, and
+cause every active actor to retire at the safe callback boundary,
+matching the pre-existing host-only restriction on per-actor telemetry.
+
+Four new negative regression scenarios cover these functions in handler
+and constructor contexts. The checked-in `verify-static-actors.sh`
+now executes all **27 cases + 1 C ABI fixture**, on both GCC and Clang
+at `-O1` and `-O2`: **112 required executions**.
+
+**STATUS: COMMITTED, NOT YET VERIFIED EXECUTING.** Neither the current
+112-execution host matrix nor real `.ores` LLVM admission and Zephyr/QEMU
+firmware has completed on the updated branch. No success claim is made.
+The local environment has Clang 17 and GNU C but lacks the LLVM headers
+and CMake package configuration required to build `oreslang-llvmc`,
+as well as QEMU and Zephyr/west. The GitHub Actions private mirror runs
+are failing before any job steps execute, including the refreshed
+revision. No alternative organization was confirmed to have a runnable
+private hosted runner.
+
+Merge gates for Embedded #5 and LLVM #388 therefore remain closed.
