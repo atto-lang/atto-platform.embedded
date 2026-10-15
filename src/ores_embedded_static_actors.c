@@ -29,6 +29,14 @@ static ActorSlot *current;
 static unsigned issued, active_count;
 static int fault;
 
+/* Include every adapter-owned persistent variable in the admission check.
+ * This is a compile-time bound, not a claim about the whole Zephyr image,
+ * linker alignment, stack, or other system allocations. */
+_Static_assert(sizeof(slots) + sizeof(refs) + sizeof(current) +
+               sizeof(issued) + sizeof(active_count) + sizeof(fault) <=
+               ORES_STATIC_ACTOR_STORAGE_BUDGET_BYTES,
+               "static actor adapter exceeds 3 KiB storage budget");
+
 static void fail(void) { fault = 1; }
 void ores_embedded_actors_reset(void) {
     unsigned i, j;
