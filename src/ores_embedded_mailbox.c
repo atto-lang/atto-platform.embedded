@@ -55,9 +55,12 @@ ores_embedded_status ores_embedded_pop(
     size_t i;
     ores_embedded_message *slot;
     if (written == NULL) return ORES_EMBEDDED_INVALID_ARGUMENT;
+    /* Reject aliases before writing through the caller output pointer. */
+    if (box != NULL && overlaps_box(box, written, sizeof(*written)))
+        return ORES_EMBEDDED_INVALID_ARGUMENT;
     *written = 0;
-    if (!valid_state(box) || overlaps_box(box, destination, capacity) ||
-        overlaps_box(box, written, sizeof(*written))) return ORES_EMBEDDED_INVALID_ARGUMENT;
+    if (!valid_state(box) || overlaps_box(box, destination, capacity))
+        return ORES_EMBEDDED_INVALID_ARGUMENT;
     if (box->count == 0) return ORES_EMBEDDED_EMPTY;
     slot = &box->slots[box->head];
     if (slot->length > ORES_EMBEDDED_MESSAGE_BYTES) return ORES_EMBEDDED_INVALID_ARGUMENT;
