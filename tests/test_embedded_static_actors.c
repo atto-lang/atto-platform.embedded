@@ -32,6 +32,14 @@ static int64_t illegal_const_write(void *heap, uint64_t domain,
     ores_actor_i64_heap_field_write(heap,domain,epoch,0,msg);
     return msg;
 }
+static unsigned fault_after_first_count;
+static int64_t fault_after_first(void *heap, uint64_t domain,
+                                 uint64_t epoch, int64_t msg) {
+    ++fault_after_first_count;
+    if (fault_after_first_count > 1)
+        ores_actor_i64_heap_field_init_mutable(heap,domain,epoch,0,msg);
+    return handler(heap,domain,epoch,msg);
+}
 static void omitted_init(void *heap, uint64_t domain, uint64_t epoch) {
     (void)heap; (void)domain; (void)epoch;
 }
@@ -86,6 +94,7 @@ int main(int argc, char **argv) {
         first=oreslang_source_actor_spawn(duplicate_init,handler,1);
         assert(!first && ores_embedded_actors_faulted());
         assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==0);
     } else if (strcmp(mode,"missing-initializer")==0) {
         first=oreslang_source_actor_spawn(omitted_init,handler,1);
         assert(!first && ores_embedded_actors_faulted());
@@ -97,6 +106,17 @@ int main(int argc, char **argv) {
         oreslang_source_actor_stop(first);
         assert(ores_embedded_actors_faulted());
         assert(ores_embedded_actors_deliveries(0)==0);
+        assert(ores_embedded_actors_active()==0);
+    } else if (strcmp(mode,"fault-after-success")==0) {
+        first=oreslang_source_actor_spawn(init,fault_after_first,1);
+        assert(first);
+        oreslang_source_actor_send(first,1);
+        oreslang_source_actor_send(first,2);
+        oreslang_source_actor_stop(first);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==1);
+        assert(ores_embedded_actors_last(0)==11);
     } else if (strcmp(mode,"immutable-field")==0) {
         first=oreslang_source_actor_spawn(const_init,illegal_const_write,1);
         assert(first);
@@ -104,6 +124,7 @@ int main(int argc, char **argv) {
         oreslang_source_actor_stop(first);
         assert(ores_embedded_actors_faulted());
         assert(ores_embedded_actors_deliveries(0)==0);
+        assert(ores_embedded_actors_active()==0);
     } else if (strcmp(mode,"double-stop")==0) {
         first=oreslang_source_actor_spawn(init,handler,1);
         assert(first);
