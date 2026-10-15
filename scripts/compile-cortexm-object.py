@@ -10,6 +10,8 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import sys
+from bounded_process import run_bounded
 
 TARGET = "thumbv7m-none-eabi"
 GUEST_SYMBOL = "oreslang_cortexm_bootstrap"
@@ -30,7 +32,9 @@ def main() -> int:
     compiler = pathlib.Path(a.compiler).resolve(strict=True)
     source = pathlib.Path(a.source).resolve(strict=True)
     clang = shutil.which(a.clang) or str(pathlib.Path(a.clang).resolve(strict=True))
-    output = pathlib.Path(a.output).resolve()
+    output_path = pathlib.Path(a.output).absolute()
+    require(not output_path.is_symlink(), "output destination must not be a symlink")
+    output = output_path.resolve()
     require(compiler.is_file() and os.access(compiler, os.X_OK),
             "Oreslang compiler must be an executable file")
     require(source.is_file(), "Oreslang source must be an existing file")
@@ -45,9 +49,11 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix=".ores-arm-", dir=output.parent) as tmp:
         ir = pathlib.Path(tmp) / "guest.ll"
         obj = pathlib.Path(tmp) / "guest.o"
-        with ir.open("wb") as dest:
-            subprocess.run([str(compiler), "--target=" + TARGET, str(source)],
-                           stdout=dest, check=True, timeout=90)
+        result = run_bounded([str(compiler), "--target=" + TARGET, str(source)],
+                             timeout=90, max_bytes=MAX_IR_BYTES)
+        sys.stderr.write(result.stderr)
+        result.check_returncode()
+        ir.write_text(result.stdout, encoding="utf-8")
         require(ir.stat().st_size <= MAX_IR_BYTES, "compiler IR budget exceeded")
         content = ir.read_text(encoding="utf-8")
         require('target triple = "' + TARGET + '"' in content,
