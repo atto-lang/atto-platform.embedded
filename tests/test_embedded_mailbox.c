@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 
 _Static_assert(sizeof(ores_embedded_mailbox) < 1024, "mailbox must be statically bounded");
 
@@ -62,5 +63,18 @@ int main(void) {
     assert(ores_embedded_push(&box, &value, 1) == ORES_EMBEDDED_OK);
     assert(ores_embedded_pop(&box, box.slots[0].bytes, ORES_EMBEDDED_MESSAGE_BYTES, &n) == ORES_EMBEDDED_INVALID_ARGUMENT);
     assert(ores_embedded_count(&box) == 1);
+    {
+        union { size_t alignment; ores_embedded_mailbox box; } aliased;
+        unsigned char before[sizeof(aliased.box)];
+        assert(ores_embedded_init(&aliased.box) == ORES_EMBEDDED_OK);
+        value = 77;
+        assert(ores_embedded_push(&aliased.box, &value, 1) == ORES_EMBEDDED_OK);
+        memcpy(before, &aliased.box, sizeof before);
+        assert(ores_embedded_pop(&aliased.box, output, sizeof output,
+                                (size_t *)(void *)&aliased.box) == ORES_EMBEDDED_INVALID_ARGUMENT);
+        assert(memcmp(before, &aliased.box, sizeof before) == 0);
+        assert(ores_embedded_pop(&aliased.box, output, sizeof output, &n) == ORES_EMBEDDED_OK);
+        assert(n == 1 && output[0] == 77);
+    }
     return 0;
 }
