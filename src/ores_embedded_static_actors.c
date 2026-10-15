@@ -84,6 +84,8 @@ int ores_embedded_actors_faulted(void) { return fault; }
 unsigned ores_embedded_actors_spawns(void) { return issued; }
 unsigned ores_embedded_actors_active(void) { return active_count; }
 unsigned ores_embedded_actors_deliveries(unsigned n) {
+    /* Host-only telemetry: a guest turn may only access its own heap. */
+    if (current) { fail(); return 0; }
     if (n>=issued || !refs[n].issued) { fail(); return 0; }
     const ActorRef *ref=&refs[n];
     if (ref->slot >= ORES_STATIC_ACTOR_LIMIT) { fail(); return 0; }
@@ -92,6 +94,8 @@ unsigned ores_embedded_actors_deliveries(unsigned n) {
         ? slot->deliveries : ref->deliveries;
 }
 int64_t ores_embedded_actors_last(unsigned n) {
+    /* Do not expose other actors' completed values to guest callbacks. */
+    if (current) { fail(); return 0; }
     if (n>=issued || !refs[n].issued) { fail(); return 0; }
     const ActorRef *ref=&refs[n];
     if (ref->slot >= ORES_STATIC_ACTOR_LIMIT) { fail(); return 0; }
