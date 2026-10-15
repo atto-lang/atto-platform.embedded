@@ -29,6 +29,9 @@ static int mailbox_alias_smoke(void) {
     if (ores_embedded_pop(&box, &out, sizeof out, &written) != ORES_EMBEDDED_OK ||
         written != 1 || out != value || ores_embedded_count(&box) != 0)
         return 0;
+    for (i = 0; i < sizeof box.slots[0]; ++i)
+        if (((const volatile unsigned char *)&box.slots[0])[i])
+            return 0;
     for (i = 0; i < 16; ++i) {
         value = (uint8_t)i;
         if (ores_embedded_push(&box, &value, 1) != ORES_EMBEDDED_OK ||
