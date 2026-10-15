@@ -37,7 +37,23 @@ _Static_assert(sizeof(slots) + sizeof(refs) + sizeof(current) +
                ORES_STATIC_ACTOR_STORAGE_BUDGET_BYTES,
                "static actor adapter exceeds 3 KiB storage budget");
 
-static void fail(void) { fault = 1; }
+/* A sticky fault is fatal for the whole static actor session. Outside a
+ * callback, retire every active slot immediately so private state and queued
+ * payloads cannot survive a failed send, invalid capability or reset. During
+ * a callback, defer cleanup until the trusted callback boundary returns. */
+static void retire_slot(ActorSlot *slot, ActorRef *ref);
+static void fail(void) {
+    unsigned i;
+    fault = 1;
+    if (current) return;
+    for (i=0; i<issued; ++i) {
+        ActorRef *ref=&refs[i];
+        if (!ref->issued || ref->slot >= ORES_STATIC_ACTOR_LIMIT) continue;
+        ActorSlot *slot=&slots[ref->slot];
+        if (slot->active && slot->generation == ref->generation)
+            retire_slot(slot,ref);
+    }
+}
 void ores_embedded_actors_reset(void) {
     unsigned i, j;
     /* Address-valued capabilities cannot be safely reissued after reset.
@@ -208,7 +224,7 @@ void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
     current=0;
     for (i=0; i<fields; ++i)
         if (!slot->initialized_field[i]) fail();
-    if (fault) { retire_slot(slot,ref); return 0; }
+    if (fault) { fail(); return 0; }
     return ref;
 }
 void oreslang_source_actor_send(void* actor, int64_t payload) {
@@ -238,8 +254,12 @@ void oreslang_source_actor_stop(void* actor) {
             slot->deliveries++;
         }
     }
-    /* On a fault, discard the partially processed message, retain only
-     * telemetry from earlier fully committed turns, and destroy the slot. */
+    if (fault) {
+        /* A failed handler cannot leave *other* actors active. The callback
+         * has returned, so this is a safe global retire/scrub boundary. */
+        fail();
+        return;
+    }
     ActorRef *ref=lookup(actor);
     if (!ref) return;
     retire_slot(slot,ref);
