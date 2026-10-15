@@ -9,23 +9,25 @@ for cc in gcc clang; do
     echo "Missing required C compiler: $cc" >&2
     exit 1
   fi
-  "$cc" -std=c11 -Wall -Wextra -Wpedantic -Werror -UNDEBUG \
-    -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -I"$root/include" "$root/src/ores_embedded_static_actors.c" \
-    "$root/tests/test_embedded_static_actors.c" -o "$tmp/actor-$cc"
-  for scenario in "${scenarios[@]}"; do
+  for optimization in O1 O2; do
+    "$cc" -std=c11 -Wall -Wextra -Wpedantic -Werror -UNDEBUG \
+      "-$optimization" -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+      -I"$root/include" "$root/src/ores_embedded_static_actors.c" \
+      "$root/tests/test_embedded_static_actors.c" -o "$tmp/actor-$cc-$optimization"
+    for scenario in "${scenarios[@]}"; do
+      ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
+      UBSAN_OPTIONS="halt_on_error=1" "$tmp/actor-$cc-$optimization" "$scenario"
+      echo "PASS [$cc -$optimization] $scenario"
+    done
+    "$cc" -std=c11 -Wall -Wextra -Wpedantic -Werror -UNDEBUG \
+      "-$optimization" -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+      -I"$root/include" "$root/src/ores_embedded_static_actors.c" \
+      "$root/tests/cortexm_static_actor_link_smoke.c" \
+      "$root/tests/host_static_actor_abi_driver.c" -o "$tmp/abi-$cc-$optimization"
     ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
-    UBSAN_OPTIONS="halt_on_error=1" "$tmp/actor-$cc" "$scenario"
-    echo "PASS [$cc] $scenario"
+    UBSAN_OPTIONS="halt_on_error=1" "$tmp/abi-$cc-$optimization"
+    echo "PASS [$cc -$optimization] two-actor C ABI stand-in (not .ores or QEMU)"
   done
-  "$cc" -std=c11 -Wall -Wextra -Wpedantic -Werror -UNDEBUG \
-    -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -I"$root/include" "$root/src/ores_embedded_static_actors.c" \
-    "$root/tests/cortexm_static_actor_link_smoke.c" \
-    "$root/tests/host_static_actor_abi_driver.c" -o "$tmp/abi-$cc"
-  ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
-  UBSAN_OPTIONS="halt_on_error=1" "$tmp/abi-$cc"
-  echo "PASS [$cc] two-actor ABI stand-in execution (not .ores or QEMU)"
 done
 clang --target=thumbv7m-none-eabi -mcpu=cortex-m3 -mthumb \
   -ffreestanding -fno-builtin -fno-stack-protector -std=c11 -O2 \
