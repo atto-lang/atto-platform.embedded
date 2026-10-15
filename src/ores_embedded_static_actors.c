@@ -135,6 +135,28 @@ void ores_actor_i64_heap_field_write(void* heap, uint64_t domain,
         !a->mutable_field[index]) { fail(); return; }
     a->state[index]=value;
 }
+/* Retire only at a host/runtime boundary, after the generated guest callback
+ * has returned. A failed constructor or handler may have written partial
+ * private state; never leave that state in an active slot after a sticky fault.
+ * Preserve only previously committed scalar telemetry for the issued ref. */
+static void retire_slot(ActorSlot *slot, ActorRef *ref) {
+    unsigned i;
+    ref->last=slot->last;
+    ref->deliveries=slot->deliveries;
+    slot->active=0;
+    active_count--;
+    for (i=0; i<ORES_STATIC_ACTOR_FIELDS; ++i) {
+        slot->state[i]=0;
+        slot->mutable_field[i]=0;
+        slot->initialized_field[i]=0;
+    }
+    for (i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i) slot->mailbox[i]=0;
+    slot->init=0; slot->handler=0;
+    slot->phase=0; slot->fields=0;
+    slot->head=slot->tail=slot->count=0;
+    slot->domain=slot->epoch=0;
+    slot->last=0; slot->deliveries=0;
+}
 void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
         int64_t (*handler)(void*, uint64_t, uint64_t, int64_t), uint64_t fields) {
     unsigned i;
@@ -178,16 +200,7 @@ void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
     current=0;
     for (i=0; i<fields; ++i)
         if (!slot->initialized_field[i]) fail();
-    if (fault) {
-        slot->active=0;
-        active_count--;
-        for (i=0; i<ORES_STATIC_ACTOR_FIELDS; ++i) {
-            slot->state[i]=0;
-            slot->mutable_field[i]=0;
-            slot->initialized_field[i]=0;
-        }
-        return 0;
-    }
+    if (fault) { retire_slot(slot,ref); return 0; }
     return ref;
 }
 void oreslang_source_actor_send(void* actor, int64_t payload) {
@@ -217,24 +230,9 @@ void oreslang_source_actor_stop(void* actor) {
             slot->deliveries++;
         }
     }
-    if (fault) return;
-    /* Preserve per-capability telemetry before reusing the underlying slot. */
+    /* On a fault, discard the partially processed message, retain only
+     * telemetry from earlier fully committed turns, and destroy the slot. */
     ActorRef *ref=lookup(actor);
     if (!ref) return;
-    ref->last=slot->last;
-    ref->deliveries=slot->deliveries;
-    slot->active=0;
-    active_count--;
-    unsigned i;
-    for (i=0; i<ORES_STATIC_ACTOR_FIELDS; ++i) {
-        slot->state[i]=0;
-        slot->mutable_field[i]=0;
-        slot->initialized_field[i]=0;
-    }
-    for (i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i) slot->mailbox[i]=0;
-    slot->init=0; slot->handler=0;
-    slot->phase=0; slot->fields=0;
-    slot->head=slot->tail=slot->count=0;
-    slot->domain=slot->epoch=0;
-    slot->last=0; slot->deliveries=0;
+    retire_slot(slot,ref);
 }
