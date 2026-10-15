@@ -18,9 +18,18 @@ carrier. All actor state and queue storage is statically allocated.
   handler execution. The only handler input/output is a scalar i64.
 - No dynamic allocation exists in the static actor adapter. This does not
   prove the entire Zephyr kernel, toolchain, or firmware never allocates.
-- `ores_embedded_actors_reset` is a boot/session initializer, not a
-  supported actor lifecycle operation. Caller must discard *all* old handles
-  before reset; its fixed ref objects can be reused across sessions.
+- `ores_embedded_actors_reset` is a **boot-only** initializer. Once any
+  actor reference has been issued, reset permanently fails closed and sets
+  a sticky fault; only a device reboot starts a new actor session. Reusing
+  fixed reference addresses between sessions would otherwise resurrect stale
+  capabilities.
+- Generated field initialization is allowed only during actor construction;
+  duplicate/missing initialization and writes to immutable fields fail closed.
+  Retiring an actor scrubs its private fields and mailbox, retaining only
+  its final scalar result and delivery count in the original immutable ref.
+- For each source bootstrap, the compiler statically proves that no mailbox
+  receives more than 16 pending messages before a stop; the runtime still
+  independently checks capacity at each send.
 
 ## Current language boundary
 
@@ -35,7 +44,10 @@ and FIFO delivery, not actor-to-actor application messaging.
 ## Tests and negative cases
 
 `tests/test_embedded_static_actors.c` covers enqueue/drain, state persistence,
-double stop, mailbox capacity and stale pointer after slot reuse. The private
+immutable postmortem telemetry, double stop, mailbox capacity, stale pointer
+after slot reuse, illegal reset, duplicate/missing field initialization,
+and forbidden field writes during message handling. Every fault scenario runs
+in a fresh process to avoid unsafe capability reuse via test resets. The private
 CI mirror compiles that test using AddressSanitizer and UBSan, and links a
 real Oreslang guest ARM object into Zephyr QEMU. Do not conflate a host C test
 with guest source execution or claim MPU/WCET guarantees.
