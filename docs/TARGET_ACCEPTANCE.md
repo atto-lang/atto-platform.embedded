@@ -21,3 +21,25 @@ An intermediate prerequisite, native scalar guest execution in Zephyr/QEMU,
 passed on 2026-10-14; see
 [exact-source run #38646752678](https://github.com/canonical-cloud/canonical-docs/actions/runs/38646752678).
 The actor-specific acceptance criteria above remain **unmet**.
+
+## Actor firmware precursor — independently verified
+
+The previous scalar-only summary above is historical. On October 15, 2026,
+the full `.ores` source-actor firmware (two actors, four messages and static
+storage) compiled with the LLVM backend and booted under Zephyr 4.3.0
+`qemu_cortex_m3`: [original acceptance
+run](https://github.com/benefactor-cc/backend.rs/actions/runs/38757294870).
+A later [exact LLVM PR-head
+run](https://github.com/benefactor-cc/backend.rs/actions/runs/38767714704)
+passed both compiler admission and QEMU jobs. The real guest emitted:
+`ORESLANG_CORTEXM_ACTORS_PASS count=2 delivery=4 allocation=static`.
+
+The verified linked image used 16,140 bytes FLASH and 7,440 bytes RAM on
+QEMU's Cortex-M3 memory profile. These figures do **not** establish WCET,
+worst-case stack usage, physical MPU protection, ISR safety or hardware-board
+compatibility. The actor runtime is still a **single-threaded static adapter**,
+not complete target supervision and cancellation. The checklist above remains
+the bar for graduating from **prototype** to a supported production target.
+
+See [board portability](BOARD_PORTABILITY.md) for ARMv7E-M UNO R4,
+ARMv8-M Pico 2 and explicitly excluded ARMv6-M Pico / RISC-V combinations.
