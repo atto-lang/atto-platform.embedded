@@ -121,6 +121,34 @@ int main(int argc, char **argv) {
         assert(ores_embedded_actors_faulted());
         assert(ores_embedded_actors_active()==0);
         assert(ores_embedded_actors_deliveries(0)==0);
+    } else if (strcmp(mode,"capacity-stress")==0) {
+        void *actors[ORES_STATIC_ACTOR_LIMIT];
+        for (i=0; i<ORES_STATIC_ACTOR_LIMIT; ++i) {
+            actors[i]=oreslang_source_actor_spawn(init,handler,1);
+            assert(actors[i]);
+        }
+        assert(ores_embedded_actors_active()==ORES_STATIC_ACTOR_LIMIT);
+        for (i=0; i<ORES_STATIC_ACTOR_LIMIT; ++i)
+            for (unsigned j=0; j<ORES_STATIC_MAILBOX_CAPACITY; ++j)
+                oreslang_source_actor_send(actors[i],(int64_t)(i+1));
+        assert(!ores_embedded_actors_faulted());
+        for (i=ORES_STATIC_ACTOR_LIMIT; i>0; --i)
+            oreslang_source_actor_stop(actors[i-1]);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        for (i=0; i<ORES_STATIC_ACTOR_LIMIT; ++i) {
+            assert(ores_embedded_actors_deliveries(i)==ORES_STATIC_MAILBOX_CAPACITY);
+            assert(ores_embedded_actors_last(i)==
+                10+(int64_t)(i+1)*ORES_STATIC_MAILBOX_CAPACITY);
+        }
+    } else if (strcmp(mode,"exhaustion-scrub")==0) {
+        for (i=0; i<ORES_STATIC_ACTOR_LIMIT; ++i)
+            assert(oreslang_source_actor_spawn(init,handler,1));
+        assert(ores_embedded_actors_active()==ORES_STATIC_ACTOR_LIMIT);
+        assert(!oreslang_source_actor_spawn(init,handler,1));
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_spawns()==ORES_STATIC_ACTOR_LIMIT);
     } else if (strcmp(mode,"bad-initializer")==0) {
         first=oreslang_source_actor_spawn(duplicate_init,handler,1);
         assert(!first && ores_embedded_actors_faulted());

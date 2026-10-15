@@ -3,7 +3,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-scenarios=(basic stale overflow overflow-scrub invalid-query-scrub reset fault-before-spawn-reset bad-initializer missing-initializer bad-handler fault-after-success handler-fault-scrub-others immutable-field double-stop)
+scenarios=(basic stale overflow overflow-scrub invalid-query-scrub capacity-stress exhaustion-scrub reset fault-before-spawn-reset bad-initializer missing-initializer bad-handler fault-after-success handler-fault-scrub-others immutable-field double-stop)
 for cc in gcc clang; do
   if ! command -v "$cc" >/dev/null 2>&1; then
     echo "Missing required C compiler: $cc" >&2
@@ -32,3 +32,22 @@ if command -v readelf >/dev/null 2>&1; then
   fi
 fi
 echo 'PASS ARM Cortex-M3 freestanding runtime object (ELF32 ARM)'
+# This is an ABI/linker smoke using C stand-ins for generated guest functions,
+# not a replacement for running real .ores source through LLVM and Zephyr.
+if ! command -v ld.lld >/dev/null 2>&1; then
+  echo 'Missing ld.lld; Cortex-M link verification is required' >&2
+  exit 1
+fi
+clang --target=thumbv7m-none-eabi -mcpu=cortex-m3 -mthumb \
+  -ffreestanding -fno-builtin -fno-stack-protector -std=c11 -O2 \
+  -Wall -Wextra -Wpedantic -Werror -I"$root/include" \
+  -c "$root/tests/cortexm_static_actor_link_smoke.c" -o "$tmp/actor-guest.o"
+clang --target=thumbv7m-none-eabi -mcpu=cortex-m3 -mthumb -nostdlib \
+  -fuse-ld=lld -Wl,-e,cortexm_static_actor_link_smoke \
+  -Wl,--no-undefined -Wl,-Ttext=0x10000 \
+  "$tmp/actor-arm.o" "$tmp/actor-guest.o" -o "$tmp/actor-linked.elf"
+if command -v readelf >/dev/null 2>&1; then
+  readelf -h "$tmp/actor-linked.elf" | grep -Eq 'Machine: *ARM'
+  readelf -h "$tmp/actor-linked.elf" | grep -Eq 'Type: *EXEC'
+fi
+echo 'PASS freestanding ARM runtime + two-actor ABI stub link (not QEMU execution)'
