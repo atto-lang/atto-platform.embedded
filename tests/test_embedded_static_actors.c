@@ -40,6 +40,24 @@ static int64_t fault_after_first(void *heap, uint64_t domain,
         ores_actor_i64_heap_field_init_mutable(heap,domain,epoch,0,msg);
     return handler(heap,domain,epoch,msg);
 }
+static void *foreign_actor_heap;
+static void *reentrant_actor_ref;
+static void shared_init(void *heap, uint64_t domain, uint64_t epoch) {
+    init(heap,domain,epoch);
+    foreign_actor_heap=heap;
+}
+static int64_t cross_heap_handler(void *heap, uint64_t domain,
+                                  uint64_t epoch, int64_t msg) {
+    (void)heap;
+    (void)ores_actor_i64_heap_field_read(foreign_actor_heap,domain,epoch,0);
+    return msg;
+}
+static int64_t reentrant_send_handler(void *heap, uint64_t domain,
+                                      uint64_t epoch, int64_t msg) {
+    (void)heap; (void)domain; (void)epoch;
+    oreslang_source_actor_send(reentrant_actor_ref,msg+1);
+    return msg;
+}
 static void omitted_init(void *heap, uint64_t domain, uint64_t epoch) {
     (void)heap; (void)domain; (void)epoch;
 }
@@ -187,6 +205,26 @@ int main(int argc, char **argv) {
         assert(ores_embedded_actors_active()==0);
         assert(ores_embedded_actors_deliveries(0)==0);
         assert(ores_embedded_actors_deliveries(1)==0);
+    } else if (strcmp(mode,"cross-actor-heap")==0) {
+        first=oreslang_source_actor_spawn(init,cross_heap_handler,1);
+        second=oreslang_source_actor_spawn(shared_init,handler,1);
+        assert(first && second);
+        oreslang_source_actor_send(first,1);
+        oreslang_source_actor_send(second,2);
+        oreslang_source_actor_stop(first);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==0);
+        assert(ores_embedded_actors_deliveries(1)==0);
+    } else if (strcmp(mode,"reentrant-send")==0) {
+        first=oreslang_source_actor_spawn(init,reentrant_send_handler,1);
+        assert(first);
+        reentrant_actor_ref=first;
+        oreslang_source_actor_send(first,1);
+        oreslang_source_actor_stop(first);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==0);
     } else if (strcmp(mode,"immutable-field")==0) {
         first=oreslang_source_actor_spawn(const_init,illegal_const_write,1);
         assert(first);
