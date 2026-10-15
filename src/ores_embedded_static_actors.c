@@ -80,9 +80,20 @@ void ores_embedded_actors_reset(void) {
     }
     issued = 0; active_count = 0; fault = 0;
 }
-int ores_embedded_actors_faulted(void) { return fault; }
-unsigned ores_embedded_actors_spawns(void) { return issued; }
-unsigned ores_embedded_actors_active(void) { return active_count; }
+/* Global diagnostics are host-only. Guests must neither inspect the
+ * population of other actors nor probe whether an unrelated turn faulted. */
+int ores_embedded_actors_faulted(void) {
+    if (current) { fail(); return 0; }
+    return fault;
+}
+unsigned ores_embedded_actors_spawns(void) {
+    if (current) { fail(); return 0; }
+    return issued;
+}
+unsigned ores_embedded_actors_active(void) {
+    if (current) { fail(); return 0; }
+    return active_count;
+}
 unsigned ores_embedded_actors_deliveries(unsigned n) {
     /* Host-only telemetry: a guest turn may only access its own heap. */
     if (current) { fail(); return 0; }
