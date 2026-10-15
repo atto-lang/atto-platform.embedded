@@ -18,11 +18,11 @@ EXPECTED = (
 )
 # Only accept raw guest serial lines or the known [serial] transport wrapper.
 # A shell echo, source snippet, or CI command line is NOT a boot or a marker.
-SERIAL = r"(?:\\[serial\\] )?"
-BOOT = re.compile(r"^" + SERIAL + r"\\*{3} Booting Zephyr OS build v[^\\s]+ \\*{3}$")
+SERIAL = r"(?:\[serial\] )?"
+BOOT = re.compile(r"^" + SERIAL + r"\*{3} Booting Zephyr OS build v[^\s]+ \*{3}$")
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 FAIL = re.compile(r"\bORESLANG_CORTEXM_[A-Z0-9_]*FAIL\b")
-FATAL = re.compile(r"\\b(?:FATAL ERROR|ASSERTION FAIL(?:ED)?|HARD FAULT|BUS FAULT|USAGE FAULT|MPU FAULT|KERNEL OOPS|KERNEL PANIC)\\b", re.I)
+FATAL = re.compile(r"\b(?:FATAL ERROR|ASSERTION FAIL(?:ED)?|HARD FAULT|BUS FAULT|USAGE FAULT|MPU FAULT|KERNEL OOPS|KERNEL PANIC)\b", re.I)
 # A guest marker may be prefixed by terminal console text, but not
 # embedded in another identifier or followed by a shell quote.
 MARKERS = tuple(re.compile(r"^" + SERIAL + re.escape(s) + r"$") for s in EXPECTED)
