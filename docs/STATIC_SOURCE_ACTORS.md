@@ -73,3 +73,26 @@ The local standalone harness covers 11 fault and lifecycle scenarios on
 GCC and Clang under ASan/UBSan (22 test executions) and ARM cross-compilation.
 The full source-to-firmware Zephyr/QEMU gate is still required before this
 branch can merge.
+
+
+## Session-wide fatal-fault cleanup
+
+A sticky adapter fault now retires **all** active actor slots whenever the
+trusted runtime regains control outside an actor constructor or handler.
+The global fail-stop path covers invalid capabilities and telemetry indexes,
+mailbox overflow, exhaustion of static actor slots, attempted reentrant sends,
+and cross-actor field access. When the fault originates in a guest handler,
+cleanup is deferred until the handler has returned, avoiding guest access to
+retired actor state. The adapter preserves only telemetry from completed
+handler turns, not from the partially executed failing turn.
+
+This is deliberately **session-fatal**: no actor can restart after such a fault
+without rebooting the device. The runtime does not implement actor-local
+supervision or resumable error recovery in this constrained profile.
+
+Standalone host verification now covers 18 deterministic scenarios on GCC and
+Clang with ASan/UBSan (36 executions), plus GCC/Clang static analysis.
+A freestanding Cortex-M3 **link test** combines the adapter with a C-defined
+stand-in for the generated guest bootstrap and validates an ARM executable
+without unresolved symbols. This checks ABI and linkage only; it does not
+compile real Oreslang source or execute Zephyr/QEMU. Those gates remain open.
