@@ -3,7 +3,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-scenarios=(basic stale overflow overflow-scrub invalid-query-scrub capacity-stress exhaustion-scrub reset fault-before-spawn-reset bad-initializer missing-initializer bad-handler fault-after-success handler-fault-scrub-others cross-actor-heap reentrant-send post-retire-wipe fault-retire-wipe guest-cross-actor-last guest-cross-actor-deliveries guest-constructor-telemetry immutable-field double-stop)
+scenarios=(basic stale overflow overflow-scrub invalid-query-scrub capacity-stress exhaustion-scrub reset fault-before-spawn-reset bad-initializer missing-initializer bad-handler fault-after-success handler-fault-scrub-others cross-actor-heap reentrant-send post-retire-wipe fault-retire-wipe guest-cross-actor-last guest-cross-actor-deliveries guest-constructor-telemetry guest-global-faulted guest-global-spawns guest-global-active guest-global-constructor immutable-field double-stop)
 for cc in gcc clang; do
   if ! command -v "$cc" >/dev/null 2>&1; then
     echo "Missing required C compiler: $cc" >&2
