@@ -69,6 +69,30 @@ class QemuMarkerVerifierTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing guest markers"):
             validate(console(*EXPECTED[:2], "echo '" + EXPECTED[2] + "'"), 124)
 
+    def test_shell_command_echo_cannot_supply_missing_marker(self):
+        with self.assertRaisesRegex(ValueError, "missing guest markers"):
+            validate(console(EXPECTED[0], EXPECTED[1],
+                             "echo " + EXPECTED[2]), 124)
+
+    def test_untrusted_log_prefix_cannot_supply_missing_marker(self):
+        with self.assertRaisesRegex(ValueError, "missing guest markers"):
+            validate(console(EXPECTED[0], EXPECTED[1],
+                             "[host] " + EXPECTED[2]), 124)
+
+    def test_echoed_guest_boot_banner_is_not_a_boot(self):
+        raw = ("echo '*** Booting Zephyr OS build v4.3.0 ***'\n"
+               + "\n".join(EXPECTED) + "\n").encode()
+        with self.assertRaisesRegex(ValueError, "no Zephyr guest boot"):
+            validate(raw, 124)
+
+    def test_mpu_fault_after_success_rejected(self):
+        with self.assertRaisesRegex(ValueError, "guest fault/failure"):
+            validate(console(*EXPECTED, "***** MPU FAULT *****"), 124)
+
+    def test_kernel_panic_after_success_rejected(self):
+        with self.assertRaisesRegex(ValueError, "guest fault/failure"):
+            validate(console(*EXPECTED, "KERNEL PANIC"), 124)
+
     def test_markers_before_guest_boot_do_not_count(self):
         raw = ("\n".join(EXPECTED) + "\n").encode() + console(*EXPECTED)
         validate(raw, 124)
