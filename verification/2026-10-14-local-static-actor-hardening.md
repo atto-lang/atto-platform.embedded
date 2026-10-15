@@ -110,3 +110,52 @@ revision. No alternative organization was confirmed to have a runnable
 private hosted runner.
 
 Merge gates for Embedded #5 and LLVM #388 therefore remain closed.
+
+
+## Verified private-runner Cortex-M gate (2026-10-15)
+
+The previous 112-run matrix was unverified when recorded above. It has
+now **executed successfully on the exact runtime/test Git blobs** from
+Embedded PR #5 commit `9f3d061ccdbe0158e78f82e1acc0b2f85422daee`.
+
+- [Host sanitizer + ARM + CMake job](https://github.com/benefactor-cc/backend.rs/actions/runs/38757294709):
+  **112/112** GCC/Clang -O1/-O2 ASan+UBSan executions (27 security
+  scenarios + two-actor C ABI fixture per configuration), **30/30**
+  GCC CTest and **30/30** Clang CTest tests. All freestanding ARM
+  object/ABI linker/static-budget checks passed.
+- [LLVM compiler / Zephyr 4.3.0 / QEMU run](https://github.com/benefactor-cc/backend.rs/actions/runs/38757294870):
+  both jobs passed. The real `.ores` program compiled into an ARM
+  guest object, linked into Zephyr, then booted under QEMU Cortex-M3.
+  The observed firmware marker was
+  `ORESLANG_CORTEXM_ACTORS_PASS count=2 delivery=4 allocation=static`.
+- [Additional Cortex-M admission stress run](https://github.com/benefactor-cc/backend.rs/actions/runs/38761765507):
+  compiler admission job passed **813/813** deterministic model cases.
+  The stress test is now committed in LLVM PR #388 and CMake-registered
+  along with the existing actor source-admission suite.
+- All mirrored upstream source/test blobs used by these gates were
+  SHA-1 matched to their source PRs. The reduced LLVM CMake harness
+  and private carrier workflow are *not* upstream build-system parity.
+
+**Linker-reported memory, Zephyr 4.3.0 QEMU Cortex-M3:**
+- FLASH: **16,140 B / 256 KiB = 6.16%**
+- RAM: **7,440 B / 64 KiB = 11.35%**
+
+These are whole-firmware *linked* memory region figures, not actor-only
+allocation, runtime maximum stack usage, WCET, physical-device memory
+isolation, or interrupt/DMA-safe wiping. The C static actor persistent
+storage assert remains a separate 3,072-byte admission bound.
+
+**Outstanding warnings observed:**
+- Clang reports overriding the LLVM module target triple to
+  `thumbv7m-none-unknown-eabi`; compile/link succeeded.
+- The GNU ARM linker warns of an orphan `.ARM.extab` section in
+  libgcc and missing `.note.GNU-stack` metadata on a libgcc object.
+  Investigate stack execute policy and section placement in the final
+  linker map; absence of an assertion failure does not prove safe
+  executable-stack attributes.
+- The 130-test upstream LLVM suite was **not** run in full on the
+  reduced private mirror. Two draft PRs still require code review and
+  their native CI policies/checks to be reconciled before merge.
+
+Do not equate successful QEMU smoke with physical Cortex-M isolation,
+bounded stack/WCET, or broad Oreslang backend conformance.
