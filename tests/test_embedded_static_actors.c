@@ -58,6 +58,23 @@ static int64_t reentrant_send_handler(void *heap, uint64_t domain,
     oreslang_source_actor_send(reentrant_actor_ref,msg+1);
     return msg;
 }
+/* Privileged native-test view of backing storage, not a guest API. */
+static void *marker_heap;
+static const int64_t state_marker=INT64_C(0x3141592653589793);
+static void marker_init(void *heap, uint64_t domain, uint64_t epoch) {
+    marker_heap=heap;
+    ores_actor_i64_heap_field_init_mutable(heap,domain,epoch,0,state_marker);
+}
+static int marker_in_slot_prefix(const void *heap) {
+    const unsigned char *data=(const unsigned char*)heap;
+    const unsigned char *needle=(const unsigned char*)&state_marker;
+    size_t pos;
+    /* The slot's scalar field region lies within its first 128 bytes. */
+    for(pos=0; pos+sizeof(state_marker)<=128; ++pos) {
+        if(memcmp(data+pos,needle,sizeof(state_marker))==0) return 1;
+    }
+    return 0;
+}
 static void omitted_init(void *heap, uint64_t domain, uint64_t epoch) {
     (void)heap; (void)domain; (void)epoch;
 }
@@ -89,6 +106,30 @@ int main(int argc, char **argv) {
         if (strcmp(mode,"stale")==0) {
             oreslang_source_actor_send(first,99);
             assert(ores_embedded_actors_faulted());
+        }
+    } else if (strcmp(mode,"post-retire-wipe")==0 ||
+               strcmp(mode,"fault-retire-wipe")==0) {
+        const int fault_mode=strcmp(mode,"fault-retire-wipe")==0;
+        first=oreslang_source_actor_spawn(marker_init,handler,1);
+        assert(first && marker_heap);
+        assert(marker_in_slot_prefix(marker_heap));
+        if(fault_mode) {
+            for(i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
+                oreslang_source_actor_send(first,(int64_t)i);
+            oreslang_source_actor_send(first,INT64_C(789));
+            assert(ores_embedded_actors_faulted());
+        } else {
+            oreslang_source_actor_stop(first);
+            assert(!ores_embedded_actors_faulted());
+        }
+        assert(ores_embedded_actors_active()==0);
+        assert(!marker_in_slot_prefix(marker_heap));
+        if(!fault_mode) {
+            second=oreslang_source_actor_spawn(init,handler,1);
+            assert(second && second!=first);
+            assert(!marker_in_slot_prefix(marker_heap));
+            oreslang_source_actor_stop(second);
+            assert(!ores_embedded_actors_faulted());
         }
     } else if (strcmp(mode,"overflow")==0) {
         first=oreslang_source_actor_spawn(init,handler,1);
