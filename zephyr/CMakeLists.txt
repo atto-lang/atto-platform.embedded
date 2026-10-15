@@ -20,5 +20,5 @@ add_custom_command(
   COMMENT "Compiling real Oreslang source actors to Cortex-M native object"
   VERBATIM)
 set_source_files_properties("${ORE_OBJECT}" PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
-target_sources(app PRIVATE src/main.c "${ORE_ROOT}/src/ores_embedded_static_actors.c" "${ORE_OBJECT}")
+target_sources(app PRIVATE src/main.c "${ORE_ROOT}/src/ores_embedded_static_actors.c" "${ORE_ROOT}/src/ores_embedded_mailbox.c" "${ORE_OBJECT}")
 target_include_directories(app PRIVATE "${ORE_ROOT}/include")
