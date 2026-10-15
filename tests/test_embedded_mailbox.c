@@ -101,5 +101,42 @@ int main(void) {
         assert(scratch.bytes[sizeof(size_t)] == 91);
         assert(ores_embedded_count(&box) == 0);
     }
+    /* Every retired mailbox slot, including its message length and any
+     * padding, must be zero after a successful delivery. Alternate full and
+     * short payloads across repeated ring wraparound to detect stale bytes. */
+    {
+        uint8_t full[ORES_EMBEDDED_MESSAGE_BYTES];
+        size_t j;
+        for (j = 0; j < sizeof full; ++j)
+            full[j] = (uint8_t)(j + 1u);
+        assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+        for (i = 0; i < ORES_EMBEDDED_QUEUE_CAPACITY * 32u; ++i) {
+            const size_t length = (i & 1u) ? 1u : sizeof full;
+            const unsigned slot = box.tail;
+            const unsigned char volatile *cleared;
+            assert(ores_embedded_push(&box, full, length) == ORES_EMBEDDED_OK);
+            if (length == 1u) {
+                for (j = 1; j < ORES_EMBEDDED_MESSAGE_BYTES; ++j)
+                    assert(box.slots[slot].bytes[j] == 0);
+            }
+            memset(output, 0, sizeof output);
+            assert(ores_embedded_pop(&box, output, sizeof output, &n) == ORES_EMBEDDED_OK);
+            assert(n == length && memcmp(output, full, n) == 0);
+            cleared = (const unsigned char volatile *)(const void *)&box.slots[slot];
+            for (j = 0; j < sizeof box.slots[slot]; ++j)
+                assert(cleared[j] == 0);
+            assert(ores_embedded_count(&box) == 0);
+        }
+        /* A syntactically bounded but internally inconsistent ring must
+         * fail closed, including on read-side operations. */
+        assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+        box.tail = 1;
+        assert(ores_embedded_count(&box) == 0);
+        assert(ores_embedded_push(&box, full, 1) == ORES_EMBEDDED_INVALID_ARGUMENT);
+        n = 999;
+        assert(ores_embedded_pop(&box, output, sizeof output, &n) ==
+               ORES_EMBEDDED_INVALID_ARGUMENT && n == 0);
+        assert(ores_embedded_init(&box) == ORES_EMBEDDED_OK);
+    }
     return 0;
 }
