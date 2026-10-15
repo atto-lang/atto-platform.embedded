@@ -51,3 +51,25 @@ in a fresh process to avoid unsafe capability reuse via test resets. The private
 CI mirror compiles that test using AddressSanitizer and UBSan, and links a
 real Oreslang guest ARM object into Zephyr QEMU. Do not conflate a host C test
 with guest source execution or claim MPU/WCET guarantees.
+
+
+## Fault cleanup and storage admission (audit 2026-10-14)
+
+A failed generated actor constructor or message-handler turn is retired
+at the callback boundary. All private actor field and FIFO storage is
+scrubbed; only the last **successfully completed** turn's result and
+delivery count remain attached to the originally issued reference. Faults
+are sticky even if no actor has yet been spawned; reset cannot clear them.
+The adapter does not support resuming after a fault.
+
+The static C adapter is now subject to a **3,072-byte** compile-time
+persistent-storage ceiling using `sizeof` of every adapter-owned static
+variable. With the audited source compiled for Cortex-M3, the object
+contains **2,324 bytes of `.bss`**. Neither number includes Zephyr kernel
+RAM, per-thread stacks, link-time alignment, heap elsewhere in the image,
+nor WCET. This is not a whole-firmware RAM proof.
+
+The local standalone harness covers 11 fault and lifecycle scenarios on
+GCC and Clang under ASan/UBSan (22 test executions) and ARM cross-compilation.
+The full source-to-firmware Zephyr/QEMU gate is still required before this
+branch can merge.
