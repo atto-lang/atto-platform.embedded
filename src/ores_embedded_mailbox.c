@@ -58,6 +58,13 @@ ores_embedded_status ores_embedded_pop(
     /* Reject aliases before writing through the caller output pointer. */
     if (box != NULL && overlaps_box(box, written, sizeof(*written)))
         return ORES_EMBEDDED_INVALID_ARGUMENT;
+    if (destination != NULL && capacity != 0) {
+        uintptr_t a = (uintptr_t)destination;
+        uintptr_t b = (uintptr_t)written;
+        if ((a >= b && a - b < sizeof(*written)) ||
+            (b > a && b - a < capacity))
+            return ORES_EMBEDDED_INVALID_ARGUMENT;
+    }
     *written = 0;
     if (!valid_state(box) || overlaps_box(box, destination, capacity))
         return ORES_EMBEDDED_INVALID_ARGUMENT;
