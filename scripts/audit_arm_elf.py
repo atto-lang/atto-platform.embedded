@@ -14,6 +14,9 @@ PF_X = 1
 PF_W = 2
 SHF_WRITE = 1
 SHF_ALLOC = 2
+SHT_PROGBITS = 1
+SHT_STRTAB = 3
+SHT_ARM_EXIDX = 0x70000001
 
 
 def require(ok, message):
@@ -40,6 +43,8 @@ def check_elf(data: bytes) -> int:
     sh = [struct.unpack_from("<IIIIIIIIII", data, shoff + i * shentsize)
           for i in range(shnum)]
     names_table = sh[shstrndx]
+    require(names_table[1] == SHT_STRTAB,
+            "ELF section-name table is not SHT_STRTAB")
     offset, size = names_table[4:6]
     require(offset + size <= len(data), "invalid section-name table")
     names = data[offset:offset + size]
@@ -65,6 +70,9 @@ def check_elf(data: bytes) -> int:
         require(file_size <= mem_size, "PT_LOAD file size exceeds memory size")
         require(file_offset + file_size <= len(data),
                 "PT_LOAD file range outside ELF")
+        require(segment[2] + mem_size <= 0x100000000 and
+                segment[3] + mem_size <= 0x100000000,
+                "PT_LOAD address range wraps ELF32")
     loads = [p for p in ph if p[0] == PT_LOAD]
     require(bool(loads), "no loadable segments")
     checked = 0
@@ -79,6 +87,8 @@ def check_elf(data: bytes) -> int:
         if length == 0:
             continue
         require(kind != 8, f"{name} is SHT_NOBITS, not file-backed")
+        require(kind in (SHT_PROGBITS, SHT_ARM_EXIDX),
+                f"{name} has unsupported ARM unwind section type")
         require(file_offset + length <= len(data),
                 f"{name} section bytes outside ELF file")
         require(flags & SHF_ALLOC and not flags & SHF_WRITE,
