@@ -9,6 +9,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(ores_embedded_mailbox PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+add_library(ores_embedded_irq_bridge STATIC src/ores_embedded_irq_bridge.c)
+target_include_directories(ores_embedded_irq_bridge PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(ores_embedded_irq_bridge PUBLIC c_std_11)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(ores_embedded_irq_bridge PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 add_library(ores_embedded_static_actors STATIC src/ores_embedded_static_actors.c)
 target_include_directories(ores_embedded_static_actors PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(ores_embedded_static_actors PUBLIC c_std_11)
@@ -30,6 +37,15 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   add_test(NAME bounded_process_regressions
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bounded_process.py")
+  find_package(Threads REQUIRED)
+  add_executable(test_embedded_irq_bridge tests/test_embedded_irq_bridge.c)
+  target_link_libraries(test_embedded_irq_bridge PRIVATE
+    ores_embedded_irq_bridge Threads::Threads)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_embedded_irq_bridge PRIVATE
+      -UNDEBUG -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME irq_bridge_spsc_40000_events COMMAND test_embedded_irq_bridge)
   add_executable(test_embedded_static_actors tests/test_embedded_static_actors.c)
   target_link_libraries(test_embedded_static_actors PRIVATE ores_embedded_static_actors)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
