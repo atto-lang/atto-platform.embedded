@@ -50,9 +50,21 @@ def check_elf(data: bytes) -> int:
         require(end >= 0, "unterminated section name")
         return names[index:end].decode("ascii")
 
+    # An absent GNU_STACK header is NOT proof of a non-executable stack.
+    # The Zephyr linker is explicitly passed -z noexecstack; fail closed
+    # if its final firmware does not retain the corresponding program header.
+    stack_headers = [p for p in ph if p[0] == PT_GNU_STACK]
+    require(len(stack_headers) == 1,
+            "expected exactly one explicit GNU_STACK program header")
+    require(not stack_headers[0][6] & PF_X,
+            "executable GNU_STACK segment")
     for segment in ph:
-        if segment[0] == PT_GNU_STACK:
-            require(not segment[6] & PF_X, "executable GNU_STACK segment")
+        if segment[0] != PT_LOAD:
+            continue
+        file_offset, file_size, mem_size = segment[1], segment[4], segment[5]
+        require(file_size <= mem_size, "PT_LOAD file size exceeds memory size")
+        require(file_offset + file_size <= len(data),
+                "PT_LOAD file range outside ELF")
     loads = [p for p in ph if p[0] == PT_LOAD]
     require(bool(loads), "no loadable segments")
     checked = 0
