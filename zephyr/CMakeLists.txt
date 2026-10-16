@@ -5,6 +5,22 @@ project(ores_embedded_zephyr_reference C)
 # Do not let those legacy inputs silently mark the final ARM ELF GNU_STACK
 # executable. This affects ELF metadata, not MPU enforcement on the MCU.
 zephyr_ld_options(-Wl,-z,noexecstack)
+
+# Zephyr v4.3.0's ARM linker script only declares .ARM.extab when C++ or
+# Rust is enabled. libgcc's integer arithmetic helpers emit unwind tables
+# even in C-only builds. Explicitly place that input in flash, rather than
+# relying on orphan placement, without enabling C++ on bare-metal targets.
+# Do not add a second output section where Zephyr already provides one.
+if(NOT CONFIG_CPP AND NOT CONFIG_RUST)
+  if(CONFIG_CMAKE_LINKER_GENERATOR)
+    zephyr_linker_section(NAME .ARM.extab GROUP ROM_REGION)
+    zephyr_linker_section_configure(SECTION .ARM.extab INPUT ".ARM.extab*")
+    zephyr_linker_section_configure(SECTION .ARM.extab INPUT ".gnu.linkonce.armextab.*")
+  else()
+    zephyr_linker_sources(ROM_SECTIONS
+      "${CMAKE_CURRENT_LIST_DIR}/linker/ores_arm_extab.ld")
+  endif()
+endif()
 # This LLVM target is ARMv7-M Thumb-2, not ARMv6-M or RISC-V.
 if(NOT CONFIG_ARM OR NOT CONFIG_CPU_CORTEX_M)
   message(FATAL_ERROR "Oreslang thumbv7m requires an ARM Cortex-M board.")
