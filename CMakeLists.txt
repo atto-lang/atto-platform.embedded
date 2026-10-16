@@ -24,6 +24,9 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   add_test(NAME elf_linker_layout_fixtures
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audit_arm_elf.py")
+  add_test(NAME bounded_process_regressions
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bounded_process.py")
   add_executable(test_embedded_static_actors tests/test_embedded_static_actors.c)
   target_link_libraries(test_embedded_static_actors PRIVATE ores_embedded_static_actors)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
