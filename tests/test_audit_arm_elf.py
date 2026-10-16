@@ -65,6 +65,44 @@ class LinkerLayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "executable GNU_STACK"):
             check_elf(fixture(stack_flags=7))
 
+    def test_reject_unwind_without_file_storage(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 0x200 + 80 + 4, 8)  # SHT_NOBITS
+        with self.assertRaisesRegex(ValueError, "file-backed bytes"):
+            check_elf(bytes(data))
+
+    def test_reject_section_outside_elf_file(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 0x200 + 80 + 16, len(data) - 1)
+        with self.assertRaisesRegex(ValueError, "file range exceeds"):
+            check_elf(bytes(data))
+
+    def test_reject_section_outside_load_file_range(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 52 + 16, 0x100)  # p_filesz
+        with self.assertRaisesRegex(ValueError, "outside PT_LOAD file-backed"):
+            check_elf(bytes(data))
+
+    def test_reject_inconsistent_section_file_offset(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 0x200 + 80 + 16, 0x108)
+        with self.assertRaisesRegex(ValueError, "file offset does not match"):
+            check_elf(bytes(data))
+
+    def test_accept_nonzero_load_file_offset_when_mapped(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 52 + 4, 0x20)  # p_offset
+        struct.pack_into("<I", data, 0x200 + 80 + 16, 0x120)  # sh_offset
+        self.assertEqual(check_elf(bytes(data)), 1)
+
+    def test_reject_duplicate_gnu_stack_headers(self):
+        data = bytearray(fixture())
+        struct.pack_into("<H", data, 44, 3)  # e_phnum
+        struct.pack_into("<IIIIIIII", data, 52 + 2 * 32,
+                         0x6474E551, 0, 0, 0, 0, 0, 6, 4)
+        with self.assertRaisesRegex(ValueError, "exactly one explicit GNU_STACK"):
+            check_elf(bytes(data))
+
     def test_reject_truncated_elf(self):
         with self.assertRaisesRegex(ValueError, "expected ELF32"):
             check_elf(b"not an elf")

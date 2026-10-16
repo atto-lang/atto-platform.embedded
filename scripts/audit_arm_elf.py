@@ -76,6 +76,9 @@ def check_elf(data: bytes) -> int:
         flags, address, length = section[2], section[3], section[5]
         if length == 0:
             continue
+        require(section[1] != 8, f"{name} must contain file-backed bytes")
+        require(section[4] + length <= len(data),
+                f"{name} file range exceeds ELF length")
         require(flags & SHF_ALLOC and not flags & SHF_WRITE,
                 f"{name} is writable or not allocated")
         require(address + length <= 0x100000000, f"{name} address wraps ELF32")
@@ -84,6 +87,11 @@ def check_elf(data: bytes) -> int:
         require(bool(owners), f"{name} not contained in a PT_LOAD segment")
         require(all(not (p[6] & PF_W) for p in owners),
                 f"{name} mapped writable by PT_LOAD")
+        backed = [p for p in owners
+                  if address + length <= p[2] + p[4]]
+        require(bool(backed), f"{name} outside PT_LOAD file-backed range")
+        require(any(section[4] == p[1] + address - p[2] for p in backed),
+                f"{name} file offset does not match PT_LOAD mapping")
         checked += 1
     require(checked > 0, "missing .ARM exception-index/table sections")
     return checked
