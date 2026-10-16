@@ -8,7 +8,15 @@ extern "C" {
 #define ORES_STATIC_ACTOR_LIMIT 8u
 #define ORES_STATIC_ACTOR_FIELDS 8u
 #define ORES_STATIC_MAILBOX_CAPACITY 16u
-/* Single-threaded reference only: NOT reentrant, ISR-safe, or parallel. */
+/* Adapter static variables must remain below this admission ceiling. */
+#define ORES_STATIC_ACTOR_STORAGE_BUDGET_BYTES 3072u
+/* Single-threaded reference only: NOT reentrant, ISR-safe, or parallel.
+ * Boot-only initializer; after any actor has been spawned, a subsequent
+ * reset is rejected and sets a sticky fault. Never reuse address capabilities
+ * across sessions without device reboot. Tests must use fresh processes.
+ * Field init is permitted only during generated actor constructors.
+ * Handler reads/writes are turn-scoped and fail on immutable writes.
+ */
 void ores_embedded_actors_reset(void);
 int ores_embedded_actors_faulted(void);
 unsigned ores_embedded_actors_spawns(void);

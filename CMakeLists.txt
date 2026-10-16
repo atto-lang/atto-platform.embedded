@@ -17,18 +17,45 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME qemu_guest_output_validator
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_verify_qemu_output.py")
+  add_test(NAME elf_linker_layout_fixtures
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audit_arm_elf.py")
+  add_test(NAME bounded_process_regressions
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bounded_process.py")
   add_executable(test_embedded_static_actors tests/test_embedded_static_actors.c)
   target_link_libraries(test_embedded_static_actors PRIVATE ores_embedded_static_actors)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(test_embedded_static_actors PRIVATE -UNDEBUG -Wall -Wextra -Wpedantic -Werror)
   endif()
-  add_test(NAME static_actor_contract COMMAND test_embedded_static_actors)
+  add_test(NAME static_actor_contract COMMAND test_embedded_static_actors basic)
+  add_executable(test_embedded_actor_abi
+    tests/cortexm_static_actor_link_smoke.c
+    tests/host_static_actor_abi_driver.c)
+  target_link_libraries(test_embedded_actor_abi PRIVATE ores_embedded_static_actors)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_embedded_actor_abi PRIVATE -UNDEBUG -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME static_actor_abi_smoke COMMAND test_embedded_actor_abi)
+  foreach(case stale overflow overflow-scrub invalid-query-scrub capacity-stress exhaustion-scrub reset fault-before-spawn-reset bad-initializer missing-initializer bad-handler fault-after-success handler-fault-scrub-others cross-actor-heap reentrant-send post-retire-wipe fault-retire-wipe guest-cross-actor-last guest-cross-actor-deliveries guest-constructor-telemetry guest-global-faulted guest-global-spawns guest-global-active guest-global-constructor guest-spawn guest-stop guest-reset immutable-field double-stop)
+    add_test(NAME static_actor_${case} COMMAND test_embedded_static_actors ${case})
+  endforeach()
   add_executable(test_embedded_mailbox tests/test_embedded_mailbox.c)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(test_embedded_mailbox PRIVATE -UNDEBUG)
   endif()
   target_link_libraries(test_embedded_mailbox PRIVATE ores_embedded_mailbox)
   add_test(NAME mailbox_contract COMMAND test_embedded_mailbox)
+  add_executable(test_embedded_mailbox_model tests/test_embedded_mailbox_model.c)
+  target_link_libraries(test_embedded_mailbox_model PRIVATE ores_embedded_mailbox)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_embedded_mailbox_model PRIVATE -UNDEBUG -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME mailbox_model_131072_ops COMMAND test_embedded_mailbox_model)
   add_executable(embedded_host_demo examples/host_demo.c)
   target_link_libraries(embedded_host_demo PRIVATE ores_embedded_mailbox)
   add_test(NAME embedded_host_demo COMMAND embedded_host_demo)
