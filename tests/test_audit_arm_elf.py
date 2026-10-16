@@ -65,6 +65,30 @@ class LinkerLayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "executable GNU_STACK"):
             check_elf(fixture(stack_flags=7))
 
+    def test_reject_unwind_nobits(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 0x200 + 80 + 4, 8)
+        with self.assertRaisesRegex(ValueError, "SHT_NOBITS"):
+            check_elf(bytes(data))
+
+    def test_reject_unwind_section_beyond_file(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 0x200 + 80 + 16, len(data) - 1)
+        with self.assertRaisesRegex(ValueError, "section bytes outside ELF"):
+            check_elf(bytes(data))
+
+    def test_reject_unwind_inside_load_memory_not_file(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 52 + 16, 0x100)
+        with self.assertRaisesRegex(ValueError, "not backed by PT_LOAD file bytes"):
+            check_elf(bytes(data))
+
+    def test_reject_unwind_offset_mismatch(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 0x200 + 80 + 16, 0x110)
+        with self.assertRaisesRegex(ValueError, "file offset differs from PT_LOAD"):
+            check_elf(bytes(data))
+
     def test_reject_truncated_elf(self):
         with self.assertRaisesRegex(ValueError, "expected ELF32"):
             check_elf(b"not an elf")

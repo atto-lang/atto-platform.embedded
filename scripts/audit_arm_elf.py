@@ -73,9 +73,14 @@ def check_elf(data: bytes) -> int:
         if name not in (".ARM.extab", ".ARM.exidx") and not name.startswith(
                 (".ARM.extab.", ".ARM.exidx.")):
             continue
-        flags, address, length = section[2], section[3], section[5]
+        kind, flags, address, file_offset, length = (
+            section[1], section[2], section[3], section[4], section[5]
+        )
         if length == 0:
             continue
+        require(kind != 8, f"{name} is SHT_NOBITS, not file-backed")
+        require(file_offset + length <= len(data),
+                f"{name} section bytes outside ELF file")
         require(flags & SHF_ALLOC and not flags & SHF_WRITE,
                 f"{name} is writable or not allocated")
         require(address + length <= 0x100000000, f"{name} address wraps ELF32")
@@ -84,6 +89,14 @@ def check_elf(data: bytes) -> int:
         require(bool(owners), f"{name} not contained in a PT_LOAD segment")
         require(all(not (p[6] & PF_W) for p in owners),
                 f"{name} mapped writable by PT_LOAD")
+        # A section inside PT_LOAD.p_memsz can still point into zero-filled
+        # memory or unrelated on-disk bytes. Require exact PT_LOAD.p_filesz
+        # coverage and its p_offset + (sh_addr - p_vaddr) file mapping.
+        backed = [p for p in owners
+                  if address + length <= p[2] + p[4]]
+        require(bool(backed), f"{name} not backed by PT_LOAD file bytes")
+        require(any(file_offset == p[1] + address - p[2] for p in backed),
+                f"{name} file offset differs from PT_LOAD mapping")
         checked += 1
     require(checked > 0, "missing .ARM exception-index/table sections")
     return checked
