@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from audit_arm_elf import check_elf
 
 
-def fixture(section_flags=2, load_flags=5, stack_flags=None, addr=0x08000100):
+def fixture(section_flags=2, load_flags=5, stack_flags=6, addr=0x08000100):
     labels = b"\x00.shstrtab\x00.ARM.extab\x00"
     data = bytearray(0x400)
     data[:16] = b"\x7fELF\x01\x01\x01" + b"\0" * 9
@@ -44,6 +44,22 @@ class LinkerLayoutTests(unittest.TestCase):
     def test_reject_unmapped_unwind(self):
         with self.assertRaisesRegex(ValueError, "not contained"):
             check_elf(fixture(addr=0x20000000))
+
+    def test_reject_absent_gnu_stack(self):
+        with self.assertRaisesRegex(ValueError, "exactly one explicit GNU_STACK"):
+            check_elf(fixture(stack_flags=None))
+
+    def test_reject_load_file_larger_than_memory(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 52+16, 0x190)
+        with self.assertRaisesRegex(ValueError, "file size exceeds memory size"):
+            check_elf(bytes(data))
+
+    def test_reject_load_file_range_outside_elf(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 52+4, len(data)-1)
+        with self.assertRaisesRegex(ValueError, "file range outside ELF"):
+            check_elf(bytes(data))
 
     def test_reject_executable_stack(self):
         with self.assertRaisesRegex(ValueError, "executable GNU_STACK"):
