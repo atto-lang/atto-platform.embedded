@@ -51,6 +51,8 @@ int main(void) {
     assert(ores_irq_bridge_isr_push(NULL, 1, 2) == ORES_IRQ_INVALID);
     assert(ores_irq_bridge_task_pop(NULL, &out) == ORES_IRQ_INVALID);
     assert(ores_irq_bridge_init(&q) == ORES_IRQ_OK);
+    assert(atomic_is_lock_free(&q.head));
+    assert(atomic_is_lock_free(&q.tail));
     assert(ores_irq_bridge_task_pop(&q, NULL) == ORES_IRQ_INVALID);
     assert(ores_irq_bridge_task_pop(&q, &q.slots[0]) == ORES_IRQ_INVALID);
     assert(ores_irq_bridge_task_pop(&q, &out) == ORES_IRQ_EMPTY);
