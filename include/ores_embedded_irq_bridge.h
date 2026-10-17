@@ -28,8 +28,8 @@ typedef struct {
 } ores_irq_event;
 
 typedef struct {
-    _Atomic uint32_t head; /* Only foreground task writes. */
-    _Atomic uint32_t tail; /* Only designated ISR writes. */
+    _Atomic unsigned int head; /* 32-bit; only foreground task writes. */
+    _Atomic unsigned int tail; /* 32-bit; only designated ISR writes. */
     ores_irq_event slots[ORES_IRQ_BRIDGE_CAPACITY];
 } ores_irq_bridge;
 
