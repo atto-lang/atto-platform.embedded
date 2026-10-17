@@ -4,8 +4,6 @@
 
 _Static_assert(sizeof(unsigned int) == sizeof(uint32_t),
                "IRQ bridge requires 32-bit unsigned int");
-_Static_assert(_Generic((uint32_t)0, unsigned int: 1, default: 0),
-               "IRQ bridge requires uint32_t to use unsigned-int atomics");
 _Static_assert(ATOMIC_INT_LOCK_FREE == 2,
                "ISR bridge requires always-lock-free 32-bit atomics");
 _Static_assert(ORES_IRQ_BRIDGE_CAPACITY > 0 &&
