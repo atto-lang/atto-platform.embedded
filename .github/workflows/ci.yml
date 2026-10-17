@@ -22,3 +22,18 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Cortex-M publication admission
         run: python3 -m unittest discover -s tests -p test_cortexm_publication.py -v
+  sanitizers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build with ASan and UBSan
+        run: |
+          cmake -S . -B build-sanitize -DCMAKE_C_COMPILER=clang -DBUILD_TESTING=ON \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          cmake --build build-sanitize --parallel 2
+      - name: Sanitizer tests
+        run: ctest --test-dir build-sanitize --output-on-failure
