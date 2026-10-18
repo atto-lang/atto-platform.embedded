@@ -72,6 +72,21 @@ entry:
                 with self.assertRaisesRegex(ValueError, "inline assembly forbidden"):
                     audit_ir(instruction)
 
+    def test_indirect_calls_cannot_launder_hidden_heap_functions(self):
+        for ir in (
+            '  %a = call ptr %fn(i64 42)',
+            '  call void %callback()',
+            '  invoke void %fn() to label %ok unwind label %failure',
+            '  callbr void %fn() to label %ok [label %other]',
+            '  %v = call i64 inttoptr (i64 999 to ptr)()',
+            '  call void %fn() ; @permitted()',
+        ):
+            with self.subTest(ir=ir):
+                with self.assertRaisesRegex(ValueError, "indirect or unresolved call forbidden"):
+                    audit_ir(ir)
+        audit_ir('declare void @llvm.lifetime.start.p0(i64, ptr)\\n'
+                 'call void @llvm.lifetime.start.p0(i64 8, ptr %slot)')
+
     def test_nm_output_cannot_hide_malformed_entries(self):
         with self.assertRaisesRegex(ValueError, "unrecognized nm"):
             audit_external_symbols("nm utility output not a symbol listing")
