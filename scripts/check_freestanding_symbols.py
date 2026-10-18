@@ -25,7 +25,7 @@ def check_undefined_symbols(text):
         if not line:
             continue
         # Some nm variants emit an object header before unresolved symbols.
-        if line.endswith(":") and len(line) < 1024:
+        if line.endswith(":") and len(line) < 1024 and not any(c.isspace() for c in line):
             continue
         unresolved.append(line)
         if len(unresolved) >= 4:
