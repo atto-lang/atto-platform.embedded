@@ -80,12 +80,15 @@ entry:
             '  callbr void %fn() to label %ok [label %other]',
             '  %v = call i64 inttoptr (i64 999 to ptr)()',
             '  call void %fn() ; @permitted()',
+            '  call void %fn() [ "deopt"(ptr @permitted()) ]',
+            '  %result = call ptr %fn(ptr @safe())',
+            '  invoke void %fn() [ "deopt"(ptr @safe()) ] to label %ok unwind label %bad',
         ):
             with self.subTest(ir=ir):
                 with self.assertRaisesRegex(ValueError, "indirect or unresolved call forbidden"):
                     audit_ir(ir)
         audit_ir('source_filename = "call.ores"')
-        audit_ir('declare void @llvm.lifetime.start.p0(i64, ptr)\\n'
+        audit_ir('declare void @llvm.lifetime.start.p0(i64, ptr)\n'
                  'call void @llvm.lifetime.start.p0(i64 8, ptr %slot)')
 
     def test_nm_output_cannot_hide_malformed_entries(self):
