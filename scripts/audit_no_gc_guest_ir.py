@@ -137,9 +137,9 @@ def main(argv=None):
     parser.add_argument("--ir", type=Path, required=True)
     parser.add_argument("--nm-output", type=Path)
     args = parser.parse_args(argv)
-    audit_ir(read_bounded_regular(args.ir, MAX_IR_BYTES, "IR"))
+    audit_ir(read_bounded_regular(args.ir, MAX_IR_BYTES, "IR (2 MiB)"))
     if args.nm_output:
-        audit_external_symbols(read_bounded_regular(args.nm_output, MAX_NM_BYTES, "nm output"))
+        audit_external_symbols(read_bounded_regular(args.nm_output, MAX_NM_BYTES, "nm output (bounded symbol-table)"))
     print("PRELINK_NO_GC_SCREEN_OK (not firmware/linked-image certification)")
     return 0
 
