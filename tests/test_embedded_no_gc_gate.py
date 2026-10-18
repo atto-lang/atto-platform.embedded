@@ -60,9 +60,9 @@ entry:
         for symbol in aliases:
             with self.subTest(symbol=symbol):
                 with self.assertRaisesRegex(ValueError, "forbidden"):
-                    audit_ir(f"declare ptr @{symbol}(i64)\\n")
+                    audit_ir(f"declare ptr @{symbol}(i64)\n")
                 with self.assertRaisesRegex(ValueError, "forbidden"):
-                    audit_external_symbols(f"         U {symbol}\\n")
+                    audit_external_symbols(f"         U {symbol}\n")
         for instruction in (
             'module asm "bl malloc"',
             'call void asm sideeffect "bl malloc", ""()',
