@@ -65,43 +65,67 @@ class LinkerLayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "executable GNU_STACK"):
             check_elf(fixture(stack_flags=7))
 
-    def test_reject_unwind_without_file_storage(self):
+    def test_reject_unwind_nobits(self):
         data = bytearray(fixture())
-        struct.pack_into("<I", data, 0x200 + 80 + 4, 8)  # SHT_NOBITS
-        with self.assertRaisesRegex(ValueError, "file-backed bytes"):
+        struct.pack_into("<I", data, 0x200 + 80 + 4, 8)
+        with self.assertRaisesRegex(ValueError, "SHT_NOBITS"):
             check_elf(bytes(data))
 
-    def test_reject_section_outside_elf_file(self):
+    def test_reject_unwind_section_beyond_file(self):
         data = bytearray(fixture())
         struct.pack_into("<I", data, 0x200 + 80 + 16, len(data) - 1)
-        with self.assertRaisesRegex(ValueError, "file range exceeds"):
+        with self.assertRaisesRegex(ValueError, "section bytes outside ELF"):
             check_elf(bytes(data))
 
-    def test_reject_section_outside_load_file_range(self):
+    def test_reject_unwind_inside_load_memory_not_file(self):
         data = bytearray(fixture())
-        struct.pack_into("<I", data, 52 + 16, 0x100)  # p_filesz
-        with self.assertRaisesRegex(ValueError, "outside PT_LOAD file-backed"):
+        struct.pack_into("<I", data, 52 + 16, 0x100)
+        with self.assertRaisesRegex(ValueError, "not backed by PT_LOAD file bytes"):
             check_elf(bytes(data))
 
-    def test_reject_inconsistent_section_file_offset(self):
+    def test_reject_unwind_offset_mismatch(self):
         data = bytearray(fixture())
-        struct.pack_into("<I", data, 0x200 + 80 + 16, 0x108)
-        with self.assertRaisesRegex(ValueError, "file offset does not match"):
+        struct.pack_into("<I", data, 0x200 + 80 + 16, 0x110)
+        with self.assertRaisesRegex(ValueError, "file offset differs from PT_LOAD"):
+            check_elf(bytes(data))
+
+    def test_reject_duplicate_gnu_stack(self):
+        data = bytearray(fixture())
+        struct.pack_into("<H", data, 44, 3)
+        struct.pack_into("<IIIIIIII", data, 116,
+                         0x6474E551, 0, 0, 0, 0, 0, 6, 4)
+        with self.assertRaisesRegex(ValueError, "exactly one explicit GNU_STACK"):
+            check_elf(bytes(data))
+
+    def test_reject_pt_load_virtual_wrap(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 52 + 8, 0xfffffff0)
+        with self.assertRaisesRegex(ValueError, "PT_LOAD address range wraps"):
+            check_elf(bytes(data))
+
+    def test_reject_pt_load_physical_wrap(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 52 + 12, 0xfffffff0)
+        with self.assertRaisesRegex(ValueError, "PT_LOAD address range wraps"):
+            check_elf(bytes(data))
+
+    def test_reject_bad_section_name_table_type(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 0x200 + 40 + 4, 1)
+        with self.assertRaisesRegex(ValueError, "not SHT_STRTAB"):
+            check_elf(bytes(data))
+
+    def test_reject_fake_unwind_section_type(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 0x200 + 80 + 4, 3)
+        with self.assertRaisesRegex(ValueError, "unsupported ARM unwind section type"):
             check_elf(bytes(data))
 
     def test_accept_nonzero_load_file_offset_when_mapped(self):
         data = bytearray(fixture())
-        struct.pack_into("<I", data, 52 + 4, 0x20)  # p_offset
-        struct.pack_into("<I", data, 0x200 + 80 + 16, 0x120)  # sh_offset
+        struct.pack_into("<I", data, 52 + 4, 0x20)
+        struct.pack_into("<I", data, 0x200 + 80 + 16, 0x120)
         self.assertEqual(check_elf(bytes(data)), 1)
-
-    def test_reject_duplicate_gnu_stack_headers(self):
-        data = bytearray(fixture())
-        struct.pack_into("<H", data, 44, 3)  # e_phnum
-        struct.pack_into("<IIIIIIII", data, 52 + 2 * 32,
-                         0x6474E551, 0, 0, 0, 0, 0, 6, 4)
-        with self.assertRaisesRegex(ValueError, "exactly one explicit GNU_STACK"):
-            check_elf(bytes(data))
 
     def test_reject_truncated_elf(self):
         with self.assertRaisesRegex(ValueError, "expected ELF32"):

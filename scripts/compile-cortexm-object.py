@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import sys
 from bounded_process import run_bounded
+from audit_no_gc_guest_ir import audit_ir, audit_external_symbols
 
 TARGET = "thumbv7m-none-eabi"
 GUEST_SYMBOL = "oreslang_cortexm_bootstrap"
@@ -59,6 +60,9 @@ def main() -> int:
         require('target triple = "' + TARGET + '"' in content,
                 "compiler failed to mark Cortex-M triple")
         require("@oreslang_cortexm_bootstrap(" in content, "expected guest symbol missing from IR")
+        # Own the exact compiler IR: reject a hidden collector or allocator
+        # before invoking Clang, then recheck the produced ARM object symbols.
+        audit_ir(content)
         subprocess.run([clang, "--target=" + TARGET, "-mcpu=cortex-m3",
                         "-mthumb", "-O2", "-ffreestanding", "-fno-builtin",
                         "-fno-stack-protector", "-x", "ir", "-c", str(ir),
@@ -76,6 +80,9 @@ def main() -> int:
                     row.split()[-2].upper() == "T"
                     for row in symbols.stdout.splitlines()),
                 "required global Cortex-M guest function missing from object")
+        all_symbols = subprocess.run([nm, str(obj)], text=True,
+                                     capture_output=True, check=True, timeout=30)
+        audit_external_symbols(all_symbols.stdout)
         os.replace(obj, output)
     return 0
 
