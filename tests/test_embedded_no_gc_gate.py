@@ -133,6 +133,26 @@ entry:
             self.assertEqual(p.returncode, 1, p.stdout)
             self.assertIn("2 MiB", p.stderr)
 
+    def test_cli_rejects_symlink_and_fifo_without_blocking(self):
+        import os
+        import subprocess
+        import tempfile
+        if os.name != "posix":
+            self.skipTest("Linux/POSIX O_NOFOLLOW and O_NONBLOCK test")
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory) / "original.ll"
+            alias = Path(directory) / "alias.ll"
+            pipe = Path(directory) / "blocked.ll"
+            script = Path(__file__).resolve().parents[1] / "scripts" / "audit_no_gc_guest_ir.py"
+            original.write_text('define void @f() { ret void }\\n')
+            alias.symlink_to(original)
+            os.mkfifo(pipe)
+            for hostile in (alias, pipe):
+                p = subprocess.run([sys.executable, str(script), "--ir", str(hostile)],
+                                   capture_output=True, text=True, timeout=5)
+                self.assertEqual(p.returncode, 1, p.stdout)
+                self.assertIn("PRELINK_NO_GC_DENIED", p.stderr)
+
     def test_no_broad_claim_of_firmware_qualification(self):
         # This gate screens the compiler-produced IR and relocatable object.
         # It does not see linked libraries, linker scripts, dynamic plugins,
