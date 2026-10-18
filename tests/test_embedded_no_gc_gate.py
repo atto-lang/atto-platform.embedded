@@ -91,6 +91,16 @@ entry:
         audit_ir('declare void @llvm.lifetime.start.p0(i64, ptr)\n'
                  'call void @llvm.lifetime.start.p0(i64 8, ptr %slot)')
 
+    def test_escaped_quoted_symbol_cannot_hide_allocator_name(self):
+        for fragment in (
+            r'declare ptr @"GC_\6dalloc"(i64)',
+            r'declare void @"llvm.\67croot"(ptr, ptr)',
+        ):
+            with self.subTest(fragment=fragment):
+                with self.assertRaisesRegex(ValueError, "escaped LLVM symbol"):
+                    audit_ir(fragment)
+        audit_ir('declare void @"safe;identifier"(i64)')
+
     def test_nm_output_cannot_hide_malformed_entries(self):
         with self.assertRaisesRegex(ValueError, "unrecognized nm"):
             audit_external_symbols("nm utility output not a symbol listing")
