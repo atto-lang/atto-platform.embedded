@@ -40,8 +40,9 @@ def audit(elf, nm="llvm-nm"):
             raise InvalidFirmware("invalid ELF size or input file type")
         header = os.read(fd, 20)
         if (header[:7] != bytes((127, 69, 76, 70, 1, 1, 1)) or
+                header[16:18] != bytes((2, 0)) or
                 header[18:20] != bytes((40, 0))):
-            raise InvalidFirmware("requires ARM ELF32 little-endian object")
+            raise InvalidFirmware("requires executable ARM ELF32 little-endian firmware")
         try:
             result = subprocess.run(
                 [nm, "--undefined-only", f"/proc/self/fd/{fd}"],
