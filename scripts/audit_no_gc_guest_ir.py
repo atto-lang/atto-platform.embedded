@@ -19,9 +19,14 @@ FORBIDDEN_SYMBOL = re.compile(
     r'GC_(?:malloc|malloc_atomic|realloc|gcollect|enable|disable)|'
     r'mono_gc_[A-Za-z_0-9]*|jl_gc_[A-Za-z_0-9]*|PyGC_Collect|'
     r'gc_(?:alloc|collect|mark|sweep|root)[A-Za-z_0-9]*|'
-    r'(?:malloc|calloc|realloc|free|_malloc_r|_free_r|_sbrk))'
+    r'(?:malloc|calloc|realloc|free|_malloc_r|_free_r|_sbrk)|'
+    r'__(?:libc|wrap|real)_(?:malloc|calloc|realloc|free)|'
+    r'__(?:rust_alloc|rust_alloc_zeroed|rust_realloc|rust_dealloc)|'
+    r'(?:mi_|je_|tc_)(?:malloc|calloc|realloc|free)|'
+    r'_Z(?:nw|na|dl|da)[A-Za-z_0-9]*)'
 )
 LLVM_SYMBOL = re.compile(r'@(?:"([^"]+)"|([A-Za-z_$._][\w$._]*))')
+INLINE_ASM = re.compile(r'\b(?:module\s+asm|(?:call|invoke|callbr)\b[^\n]*\basm\b)')
 NM_LINE = re.compile(r'^\s*(?:(?:[0-9a-fA-F]+)\s+)?([A-Za-z?])\s+(\S+)\s*$')
 
 
@@ -36,6 +41,11 @@ def audit_ir(text: str) -> None:
             continue
         if GC_STRATEGY.search(line):
             raise ValueError(f"line {number}: tracing GC strategy forbidden")
+        # Inline/module assembly hides its actual calls from both the
+        # LLVM symbol regex and ordinary no-heap IR analysis. Strict
+        # freestanding mode cannot admit that uninspectable execution.
+        if INLINE_ASM.search(line):
+            raise ValueError(f"line {number}: unverifiable inline assembly forbidden")
         for match in LLVM_SYMBOL.finditer(line):
             symbol = match.group(1) or match.group(2)
             if FORBIDDEN_SYMBOL.fullmatch(symbol):
