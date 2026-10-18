@@ -84,6 +84,7 @@ entry:
             with self.subTest(ir=ir):
                 with self.assertRaisesRegex(ValueError, "indirect or unresolved call forbidden"):
                     audit_ir(ir)
+        audit_ir('source_filename = "call.ores"')
         audit_ir('declare void @llvm.lifetime.start.p0(i64, ptr)\\n'
                  'call void @llvm.lifetime.start.p0(i64 8, ptr %slot)')
 
