@@ -44,6 +44,9 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   add_test(NAME bounded_process_regressions
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bounded_process.py")
+  add_test(NAME embedded_prelink_no_gc_gate
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_embedded_no_gc_gate.py")
   find_package(Threads REQUIRED)
   add_executable(test_embedded_irq_bridge tests/test_embedded_irq_bridge.c)
   target_link_libraries(test_embedded_irq_bridge PRIVATE
