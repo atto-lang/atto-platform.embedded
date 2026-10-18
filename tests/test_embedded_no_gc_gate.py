@@ -109,6 +109,50 @@ entry:
         with self.assertRaisesRegex(ValueError, "unrecognized nm"):
             audit_external_symbols("junk\n         U GC_malloc")
 
+    def test_oversized_external_nm_symbols_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "bounded symbol-table"):
+            audit_external_symbols("U a\\n" * (2 * 1024 * 1024 // 4 + 1))
+
+    def test_cli_rejects_oversized_proof_files_before_read(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            ir = Path(directory) / "guest.ll"
+            nm = Path(directory) / "guest.nm"
+            script = Path(__file__).resolve().parents[1] / "scripts" / "audit_no_gc_guest_ir.py"
+            ir.write_text('define void @f() { ret void }\\n')
+            nm.write_bytes(b"U a\\n" * (2 * 1024 * 1024 // 4 + 1))
+            p = subprocess.run([sys.executable, str(script), "--ir", str(ir),
+                                "--nm-output", str(nm)],
+                               capture_output=True, text=True, timeout=10)
+            self.assertEqual(p.returncode, 1, p.stdout)
+            self.assertIn("bounded symbol-table", p.stderr)
+            ir.write_bytes(b";" * (2 * 1024 * 1024 + 1))
+            p = subprocess.run([sys.executable, str(script), "--ir", str(ir)],
+                               capture_output=True, text=True, timeout=10)
+            self.assertEqual(p.returncode, 1, p.stdout)
+            self.assertIn("2 MiB", p.stderr)
+
+    def test_cli_rejects_symlink_and_fifo_without_blocking(self):
+        import os
+        import subprocess
+        import tempfile
+        if os.name != "posix":
+            self.skipTest("Linux/POSIX O_NOFOLLOW and O_NONBLOCK test")
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory) / "original.ll"
+            alias = Path(directory) / "alias.ll"
+            pipe = Path(directory) / "blocked.ll"
+            script = Path(__file__).resolve().parents[1] / "scripts" / "audit_no_gc_guest_ir.py"
+            original.write_text('define void @f() { ret void }\\n')
+            alias.symlink_to(original)
+            os.mkfifo(pipe)
+            for hostile in (alias, pipe):
+                p = subprocess.run([sys.executable, str(script), "--ir", str(hostile)],
+                                   capture_output=True, text=True, timeout=5)
+                self.assertEqual(p.returncode, 1, p.stdout)
+                self.assertIn("PRELINK_NO_GC_DENIED", p.stderr)
+
     def test_no_broad_claim_of_firmware_qualification(self):
         # This gate screens the compiler-produced IR and relocatable object.
         # It does not see linked libraries, linker scripts, dynamic plugins,

@@ -4,11 +4,14 @@
 This is NOT a complete firmware, compiler, toolchain, FFI or linker audit.
 Cortex-M guest IR is deliberately a freestanding, no-allocator scalar subset.
 """
+import os
 import re
+import stat
 import sys
 from pathlib import Path
 
 MAX_IR_BYTES = 2 * 1024 * 1024
+MAX_NM_BYTES = 2 * 1024 * 1024
 # Match actual LLVM instructions/declarations, not comments or arbitrary raw
 # bytes. Conservative false positives are safer than silently linking GC.
 GC_STRATEGY = re.compile(r'\bgc\s+"[^"]*"')
@@ -92,6 +95,8 @@ def audit_external_symbols(nm_output: str) -> None:
     of a freestanding final executable. The final firmware still needs a
     complete linked-image, symbol, library and runtime-allocation audit.
     """
+    if not isinstance(nm_output, str) or len(nm_output.encode("utf-8")) > MAX_NM_BYTES:
+        raise ValueError("nm output exceeds bounded symbol-table admission limit")
     for number, line in enumerate(nm_output.splitlines(), 1):
         if not line.strip():
             continue
@@ -105,15 +110,36 @@ def audit_external_symbols(nm_output: str) -> None:
             raise ValueError(f"line {number}: forbidden native symbol: {symbol}")
 
 
+def read_bounded_regular(path: Path, limit: int, description: str) -> str:
+    """Reject symlinks, FIFOs and oversized/racing files before full decoding."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    fd = os.open(path, flags)
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError(f"{description} must be a regular non-symlink file")
+        if metadata.st_size > limit:
+            raise ValueError(f"{description} exceeds bounded admission limit ({limit} bytes)")
+        # Re-check the actual bytes, not merely the pre-read stat size:
+        # a racing writer must never force an unbounded allocation.
+        with os.fdopen(fd, "rb", closefd=False) as file:
+            contents = file.read(limit + 1)
+        if len(contents) > limit:
+            raise ValueError(f"{description} exceeds bounded admission limit ({limit} bytes)")
+        return contents.decode("utf-8")
+    finally:
+        os.close(fd)
+
+
 def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--ir", type=Path, required=True)
     parser.add_argument("--nm-output", type=Path)
     args = parser.parse_args(argv)
-    audit_ir(args.ir.read_text(encoding="utf-8"))
+    audit_ir(read_bounded_regular(args.ir, MAX_IR_BYTES, "IR (2 MiB)"))
     if args.nm_output:
-        audit_external_symbols(args.nm_output.read_text(encoding="utf-8"))
+        audit_external_symbols(read_bounded_regular(args.nm_output, MAX_NM_BYTES, "nm output (bounded symbol-table)"))
     print("PRELINK_NO_GC_SCREEN_OK (not firmware/linked-image certification)")
     return 0
 
