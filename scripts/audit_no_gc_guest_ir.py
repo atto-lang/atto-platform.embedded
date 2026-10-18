@@ -33,6 +33,10 @@ CALL_OP = re.compile(r'^\s*(?:%(?:[\w.$-]+|"[^"]+")\s*=\s*)?(?:(?:tail|musttail|
 # First actual named function call token controls invocation: a later @safe()
 # in an operand bundle must not mask an earlier indirect %fn() call.
 CALLEE_TOKEN = re.compile(r'([%@])(?:"(?:[^"\\]|\\.)+"|[A-Za-z_$._][\w$._]*)\s*\(')
+# LLVM byte escapes can spell a forbidden function without matching its
+# lexical identifier. Reject escaped symbols until an LLVM parser decodes them.
+ESCAPED_QUOTED_SYMBOL = re.compile(r'@"(?:[^"\\]|\\.)*\\[0-9A-Fa-f]{2}')
+
 NM_LINE = re.compile(r'^\s*(?:(?:[0-9a-fA-F]+)\s+)?([A-Za-z?])\s+(\S+)\s*$')
 
 
@@ -61,6 +65,8 @@ def audit_ir(text: str) -> None:
         line = strip_llvm_comment(raw_line)
         if not line.strip():
             continue
+        if ESCAPED_QUOTED_SYMBOL.search(line):
+            raise ValueError(f"line {number}: escaped LLVM symbol needs semantic proof")
         if GC_STRATEGY.search(line):
             raise ValueError(f"line {number}: tracing GC strategy forbidden")
         # Inline/module assembly hides its actual calls from both the
