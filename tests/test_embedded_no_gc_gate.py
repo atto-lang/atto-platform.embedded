@@ -50,6 +50,28 @@ entry:
                     with self.assertRaisesRegex(ValueError, "forbidden native symbol"):
                         audit_external_symbols(f"         {kind} {symbol}\n")
 
+    def test_wrapped_allocators_and_inline_assembly_not_laundered(self):
+        aliases = (
+            "__libc_malloc", "__wrap_malloc", "__real_free",
+            "__rust_alloc", "__rust_alloc_zeroed", "__rust_realloc",
+            "__rust_dealloc", "mi_malloc", "je_free", "tc_realloc",
+            "_Znwm", "_Znam", "_ZdlPv", "_ZdaPv",
+        )
+        for symbol in aliases:
+            with self.subTest(symbol=symbol):
+                with self.assertRaisesRegex(ValueError, "forbidden"):
+                    audit_ir(f"declare ptr @{symbol}(i64)\\n")
+                with self.assertRaisesRegex(ValueError, "forbidden"):
+                    audit_external_symbols(f"         U {symbol}\\n")
+        for instruction in (
+            'module asm "bl malloc"',
+            'call void asm sideeffect "bl malloc", ""()',
+            'invoke void asm "bl malloc", ""() to label %ok unwind label %fail',
+        ):
+            with self.subTest(instruction=instruction):
+                with self.assertRaisesRegex(ValueError, "inline assembly forbidden"):
+                    audit_ir(instruction)
+
     def test_nm_output_cannot_hide_malformed_entries(self):
         with self.assertRaisesRegex(ValueError, "unrecognized nm"):
             audit_external_symbols("nm utility output not a symbol listing")
