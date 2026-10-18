@@ -30,7 +30,9 @@ INLINE_ASM = re.compile(r'\b(?:module\s+asm|(?:call|invoke|callbr)\b[^\n]*\basm\
 # Named direct calls only: an indirect native function pointer can call
 # an allocator without mentioning its name in the LLVM module.
 CALL_OP = re.compile(r'^\s*(?:%(?:[\w.$-]+|"[^"]+")\s*=\s*)?(?:(?:tail|musttail|notail)\s+)?(?:call|invoke|callbr)\b')
-DIRECT_CALLEE = re.compile(r'@(?:"(?:[^"\\]|\\.)+"|[A-Za-z_$._][\w$._]*)\s*\(')
+# First actual named function call token controls invocation: a later @safe()
+# in an operand bundle must not mask an earlier indirect %fn() call.
+CALLEE_TOKEN = re.compile(r'([%@])(?:"(?:[^"\\]|\\.)+"|[A-Za-z_$._][\\w$._]*)\\s*\\(')
 NM_LINE = re.compile(r'^\s*(?:(?:[0-9a-fA-F]+)\s+)?([A-Za-z?])\s+(\S+)\s*$')
 
 
@@ -66,8 +68,11 @@ def audit_ir(text: str) -> None:
         # freestanding mode cannot admit that uninspectable execution.
         if INLINE_ASM.search(line):
             raise ValueError(f"line {number}: unverifiable inline assembly forbidden")
-        if CALL_OP.search(line) and not DIRECT_CALLEE.search(line):
-            raise ValueError(f"line {number}: indirect or unresolved call forbidden")
+        call = CALL_OP.match(line)
+        if call is not None:
+            first_target = CALLEE_TOKEN.search(line, call.end())
+            if first_target is None or first_target.group(1) != "@":
+                raise ValueError(f"line {number}: indirect or unresolved call forbidden")
         for match in LLVM_SYMBOL.finditer(line):
             symbol = match.group(1) or match.group(2)
             if FORBIDDEN_SYMBOL.fullmatch(symbol):
