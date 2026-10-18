@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 MAX_IR_BYTES = 2 * 1024 * 1024
+MAX_NM_BYTES = 2 * 1024 * 1024
 # Match actual LLVM instructions/declarations, not comments or arbitrary raw
 # bytes. Conservative false positives are safer than silently linking GC.
 GC_STRATEGY = re.compile(r'\bgc\s+"[^"]*"')
@@ -92,6 +93,8 @@ def audit_external_symbols(nm_output: str) -> None:
     of a freestanding final executable. The final firmware still needs a
     complete linked-image, symbol, library and runtime-allocation audit.
     """
+    if not isinstance(nm_output, str) or len(nm_output.encode("utf-8")) > MAX_NM_BYTES:
+        raise ValueError("nm output exceeds bounded symbol-table admission limit")
     for number, line in enumerate(nm_output.splitlines(), 1):
         if not line.strip():
             continue
@@ -111,8 +114,13 @@ def main(argv=None):
     parser.add_argument("--ir", type=Path, required=True)
     parser.add_argument("--nm-output", type=Path)
     args = parser.parse_args(argv)
+    # Reject oversized inputs *before* decoding or materializing them.
+    if args.ir.stat().st_size > MAX_IR_BYTES:
+        raise ValueError("IR exceeds 2 MiB memory-profile admission limit")
     audit_ir(args.ir.read_text(encoding="utf-8"))
     if args.nm_output:
+        if args.nm_output.stat().st_size > MAX_NM_BYTES:
+            raise ValueError("nm output exceeds bounded symbol-table admission limit")
         audit_external_symbols(args.nm_output.read_text(encoding="utf-8"))
     print("PRELINK_NO_GC_SCREEN_OK (not firmware/linked-image certification)")
     return 0
