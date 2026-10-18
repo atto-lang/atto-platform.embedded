@@ -121,6 +121,12 @@ class LinkerLayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported ARM unwind section type"):
             check_elf(bytes(data))
 
+    def test_accept_nonzero_load_file_offset_when_mapped(self):
+        data = bytearray(fixture())
+        struct.pack_into("<I", data, 52 + 4, 0x20)
+        struct.pack_into("<I", data, 0x200 + 80 + 16, 0x120)
+        self.assertEqual(check_elf(bytes(data)), 1)
+
     def test_reject_truncated_elf(self):
         with self.assertRaisesRegex(ValueError, "expected ELF32"):
             check_elf(b"not an elf")
