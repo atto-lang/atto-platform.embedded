@@ -27,17 +27,37 @@ FORBIDDEN_SYMBOL = re.compile(
 )
 LLVM_SYMBOL = re.compile(r'@(?:"([^"]+)"|([A-Za-z_$._][\w$._]*))')
 INLINE_ASM = re.compile(r'\b(?:module\s+asm|(?:call|invoke|callbr)\b[^\n]*\basm\b)')
+# Named direct calls only: an indirect native function pointer can call
+# an allocator without mentioning its name in the LLVM module.
+CALL_OP = re.compile(r'\b(?:call|invoke|callbr)\b')
+DIRECT_CALLEE = re.compile(r'@(?:"(?:[^"\\]|\\.)+"|[A-Za-z_$._][\w$._]*)\s*\(')
 NM_LINE = re.compile(r'^\s*(?:(?:[0-9a-fA-F]+)\s+)?([A-Za-z?])\s+(\S+)\s*$')
+
+
+def strip_llvm_comment(line: str) -> str:
+    """Remove LLVM comments without stripping semicolons inside quoted names."""
+    quoted = False
+    escaped = False
+    for pos, char in enumerate(line):
+        if escaped:
+            escaped = False
+        elif char == "\\" and quoted:
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+        elif char == ";" and not quoted:
+            return line[:pos]
+    return line
 
 
 def audit_ir(text: str) -> None:
     if len(text.encode("utf-8")) > MAX_IR_BYTES:
         raise ValueError("IR exceeds 2 MiB memory-profile admission limit")
-    for number, line in enumerate(text.splitlines(), 1):
-        # LLVM comments start with ; outside quoted symbol names. Here we
-        # skip whole-line comments but retain the remainder, rejecting any
-        # ambiguous quoted text conservatively rather than losing a symbol.
-        if line.lstrip().startswith(";"):
+    for number, raw_line in enumerate(text.splitlines(), 1):
+        # Ignore *inline* comments. A trailing '; @allowed()' must not
+        # launder an indirect call as a named call.
+        line = strip_llvm_comment(raw_line)
+        if not line.strip():
             continue
         if GC_STRATEGY.search(line):
             raise ValueError(f"line {number}: tracing GC strategy forbidden")
@@ -46,6 +66,8 @@ def audit_ir(text: str) -> None:
         # freestanding mode cannot admit that uninspectable execution.
         if INLINE_ASM.search(line):
             raise ValueError(f"line {number}: unverifiable inline assembly forbidden")
+        if CALL_OP.search(line) and not DIRECT_CALLEE.search(line):
+            raise ValueError(f"line {number}: indirect or unresolved call forbidden")
         for match in LLVM_SYMBOL.finditer(line):
             symbol = match.group(1) or match.group(2)
             if FORBIDDEN_SYMBOL.fullmatch(symbol):
