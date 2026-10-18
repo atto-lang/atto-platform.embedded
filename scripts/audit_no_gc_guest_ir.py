@@ -29,7 +29,7 @@ LLVM_SYMBOL = re.compile(r'@(?:"([^"]+)"|([A-Za-z_$._][\w$._]*))')
 INLINE_ASM = re.compile(r'\b(?:module\s+asm|(?:call|invoke|callbr)\b[^\n]*\basm\b)')
 # Named direct calls only: an indirect native function pointer can call
 # an allocator without mentioning its name in the LLVM module.
-CALL_OP = re.compile(r'\b(?:call|invoke|callbr)\b')
+CALL_OP = re.compile(r'^\s*(?:%(?:[\w.$-]+|"[^"]+")\s*=\s*)?(?:(?:tail|musttail|notail)\s+)?(?:call|invoke|callbr)\b')
 DIRECT_CALLEE = re.compile(r'@(?:"(?:[^"\\]|\\.)+"|[A-Za-z_$._][\w$._]*)\s*\(')
 NM_LINE = re.compile(r'^\s*(?:(?:[0-9a-fA-F]+)\s+)?([A-Za-z?])\s+(\S+)\s*$')
 
