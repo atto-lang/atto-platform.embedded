@@ -37,6 +37,29 @@ class FreestandingSymbolTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 audit(alias, "this-program-does-not-exist")
 
+    def test_relocatable_arm_elf_is_not_firmware(self):
+        # Valid ELF identification + EM_ARM is insufficient: require ET_EXEC.
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "relocatable.o"
+            header = bytearray(52)
+            header[:7] = bytes((127, 69, 76, 70, 1, 1, 1))
+            header[16:18] = bytes((1, 0))  # ET_REL
+            header[18:20] = bytes((40, 0))  # EM_ARM
+            path.write_bytes(header)
+            with self.assertRaisesRegex(InvalidFirmware, "executable"):
+                audit(path, "nonexistent-nm")
+
+    def test_non_arm_executable_is_not_firmware(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "x86.elf"
+            header = bytearray(52)
+            header[:7] = bytes((127, 69, 76, 70, 1, 1, 1))
+            header[16:18] = bytes((2, 0))
+            header[18:20] = bytes((62, 0))  # x86_64
+            path.write_bytes(header)
+            with self.assertRaisesRegex(InvalidFirmware, "ARM ELF32"):
+                audit(path, "nonexistent-nm")
+
     def test_fifo_and_empty_files_rejected_without_blocking(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "firmware.elf"
