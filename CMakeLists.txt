@@ -25,6 +25,13 @@ endif()
 
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  # Host-link probe: freestanding C actor adapter, NOT source OTP or core.
+  add_test(NAME static_actor_freestanding_no_libc_link
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_static_actor_freestanding.py"
+      --cc "${CMAKE_C_COMPILER}"
+      --source-root "${CMAKE_CURRENT_SOURCE_DIR}")
+  set_tests_properties(static_actor_freestanding_no_libc_link PROPERTIES TIMEOUT 30)
   add_test(NAME linker_orphan_log_regressions
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_check_linker_orphans.py")
