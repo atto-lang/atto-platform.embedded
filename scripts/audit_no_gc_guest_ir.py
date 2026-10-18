@@ -32,7 +32,7 @@ INLINE_ASM = re.compile(r'\b(?:module\s+asm|(?:call|invoke|callbr)\b[^\n]*\basm\
 CALL_OP = re.compile(r'^\s*(?:%(?:[\w.$-]+|"[^"]+")\s*=\s*)?(?:(?:tail|musttail|notail)\s+)?(?:call|invoke|callbr)\b')
 # First actual named function call token controls invocation: a later @safe()
 # in an operand bundle must not mask an earlier indirect %fn() call.
-CALLEE_TOKEN = re.compile(r'([%@])(?:"(?:[^"\\]|\\.)+"|[A-Za-z_$._][\\w$._]*)\\s*\\(')
+CALLEE_TOKEN = re.compile(r'([%@])(?:"(?:[^"\\]|\\.)+"|[A-Za-z_$._][\w$._]*)\s*\(')
 NM_LINE = re.compile(r'^\s*(?:(?:[0-9a-fA-F]+)\s+)?([A-Za-z?])\s+(\S+)\s*$')
 
 
