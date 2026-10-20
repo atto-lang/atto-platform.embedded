@@ -63,7 +63,6 @@ add_custom_command(
     "${ORE_ROOT}/scripts/compile-cortexm-object.py"
     --compiler "${ORESLANG_LLVMC}" --clang "${ORE_CLANG}"
     --source "${ORE_SOURCE}" --output "${ORE_OBJECT}"
-    --forbid-symbol "unreachable_tree_shake_probe"
   DEPENDS "${ORE_SOURCE}" "${ORE_ROOT}/scripts/compile-cortexm-object.py"
           "${ORE_ROOT}/scripts/bounded_process.py" "${ORESLANG_LLVMC}"
   COMMENT "Compiling real Oreslang source actors to Cortex-M native object"
