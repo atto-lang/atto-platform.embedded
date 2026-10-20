@@ -29,6 +29,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     for name in ("compiler", "clang", "source", "output"):
         p.add_argument("--" + name, required=True)
+    p.add_argument("--forbid-symbol", action="append", default=[])
     a = p.parse_args()
     compiler = pathlib.Path(a.compiler).resolve(strict=True)
     source = pathlib.Path(a.source).resolve(strict=True)
@@ -50,7 +51,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix=".ores-arm-", dir=output.parent) as tmp:
         ir = pathlib.Path(tmp) / "guest.ll"
         obj = pathlib.Path(tmp) / "guest.o"
-        result = run_bounded([str(compiler), "--target=" + TARGET, str(source)],
+        result = run_bounded([str(compiler), "--tree-shake", "--target=" + TARGET, str(source)],
                              timeout=90, max_bytes=MAX_IR_BYTES)
         sys.stderr.write(result.stderr)
         result.check_returncode()
@@ -83,6 +84,11 @@ def main() -> int:
         all_symbols = subprocess.run([nm, str(obj)], text=True,
                                      capture_output=True, check=True, timeout=30)
         audit_external_symbols(all_symbols.stdout)
+        defined_names = {row.split()[-1] for row in all_symbols.stdout.splitlines()
+                         if row.split()}
+        for forbidden in a.forbid_symbol:
+            require(forbidden not in defined_names,
+                    "tree-shaken object retained forbidden symbol: " + forbidden)
         os.replace(obj, output)
     return 0
 
