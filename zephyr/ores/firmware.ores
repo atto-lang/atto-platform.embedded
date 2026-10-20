@@ -25,3 +25,8 @@ pub fnc main(): int {
   stop b;
   return 43;
 }
+
+// Deliberate dead code: the firmware build requires this symbol to disappear.
+fnc unreachable_tree_shake_probe(): int {
+  return 99;
+}
