@@ -51,7 +51,8 @@ static int overlaps_bridge(const ores_irq_bridge *bridge, const void *p) {
 ores_irq_status ores_irq_bridge_task_pop(
     ores_irq_bridge *bridge, ores_irq_event *out) {
     uint32_t head, tail, used, index;
-    volatile uint32_t *scrub;
+    volatile unsigned char *scrub;
+    size_t i;
     if (!bridge || !out || overlaps_bridge(bridge, out))
         return ORES_IRQ_INVALID;
     head = atomic_load_explicit(&bridge->head, memory_order_relaxed);
@@ -63,9 +64,9 @@ ores_irq_status ores_irq_bridge_task_pop(
     *out = bridge->slots[index];
     /* Scrub before publishing the slot to the producer. CPU-side only;
      * does not establish DMA, cache, MPU, or interrupt priority isolation. */
-    scrub = (volatile uint32_t *)(void *)&bridge->slots[index];
-    scrub[0] = 0;
-    scrub[1] = 0;
+    scrub = (volatile unsigned char *)(void *)&bridge->slots[index];
+    for (i = 0; i < sizeof(bridge->slots[index]); ++i) scrub[i] = 0;
     atomic_store_explicit(&bridge->head, head + 1u, memory_order_release);
     return ORES_IRQ_OK;
 }
+
