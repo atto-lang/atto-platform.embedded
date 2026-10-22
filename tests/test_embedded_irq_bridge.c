@@ -13,6 +13,13 @@
 static ores_irq_bridge q;
 static _Atomic unsigned failures;
 
+static void assert_slots_erased(void) {
+    const volatile unsigned char *bytes =
+        (const volatile unsigned char *)(const void *)q.slots;
+    size_t i;
+    for (i = 0; i < sizeof(q.slots); ++i) assert(bytes[i] == 0);
+}
+
 static void *producer(void *unused) {
     unsigned i;
     (void)unused;
@@ -50,7 +57,10 @@ int main(void) {
     assert(ores_irq_bridge_init(NULL) == ORES_IRQ_INVALID);
     assert(ores_irq_bridge_isr_push(NULL, 1, 2) == ORES_IRQ_INVALID);
     assert(ores_irq_bridge_task_pop(NULL, &out) == ORES_IRQ_INVALID);
+    /* Initialized slot storage may contain old event bytes, including padding. */
+    memset(q.slots, 0xa5, sizeof q.slots);
     assert(ores_irq_bridge_init(&q) == ORES_IRQ_OK);
+    assert_slots_erased();
     assert(atomic_is_lock_free(&q.head));
     assert(atomic_is_lock_free(&q.tail));
     assert(ores_irq_bridge_task_pop(&q, NULL) == ORES_IRQ_INVALID);
@@ -66,6 +76,7 @@ int main(void) {
         assert(q.slots[i].source == 0 && q.slots[i].value == 0);
     }
     assert(ores_irq_bridge_task_pop(&q, &out) == ORES_IRQ_EMPTY);
+    assert_slots_erased();
     /* Overflow of monotonic 32-bit indices must not corrupt FIFO order. */
     atomic_store(&q.head, UINT32_MAX - 3u);
     atomic_store(&q.tail, UINT32_MAX - 3u);

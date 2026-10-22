@@ -10,6 +10,15 @@ _Static_assert(ORES_IRQ_BRIDGE_CAPACITY > 0 &&
                ORES_IRQ_BRIDGE_CAPACITY < UINT32_MAX / 2u,
                "invalid bounded ring capacity");
 
+/* Erase the complete event representation, including any padding bytes.
+ * Volatile character stores avoid whole-struct alias assumptions and do not
+ * permit dead-store elimination on supported C11 compilers. */
+static void scrub_slot(ores_irq_event *slot) {
+    volatile unsigned char *p = (volatile unsigned char *)(void *)slot;
+    size_t i;
+    for (i = 0; i < sizeof(*slot); ++i) p[i] = 0;
+}
+
 /* The queue itself is intentionally static/caller-owned, with no malloc,
  * calls into the actor runtime, syscalls, mutexes, or retry loops.
  * A producer cannot reuse a slot until the consumer release-publishes head.
@@ -17,10 +26,8 @@ _Static_assert(ORES_IRQ_BRIDGE_CAPACITY > 0 &&
 ores_irq_status ores_irq_bridge_init(ores_irq_bridge *bridge) {
     unsigned i;
     if (!bridge) return ORES_IRQ_INVALID;
-    for (i = 0; i < ORES_IRQ_BRIDGE_CAPACITY; ++i) {
-        bridge->slots[i].source = 0;
-        bridge->slots[i].value = 0;
-    }
+    for (i = 0; i < ORES_IRQ_BRIDGE_CAPACITY; ++i)
+        scrub_slot(&bridge->slots[i]);
     atomic_init(&bridge->head, 0);
     atomic_init(&bridge->tail, 0);
     return ORES_IRQ_OK;
@@ -51,7 +58,6 @@ static int overlaps_bridge(const ores_irq_bridge *bridge, const void *p) {
 ores_irq_status ores_irq_bridge_task_pop(
     ores_irq_bridge *bridge, ores_irq_event *out) {
     uint32_t head, tail, used, index;
-    volatile uint32_t *scrub;
     if (!bridge || !out || overlaps_bridge(bridge, out))
         return ORES_IRQ_INVALID;
     head = atomic_load_explicit(&bridge->head, memory_order_relaxed);
@@ -63,9 +69,8 @@ ores_irq_status ores_irq_bridge_task_pop(
     *out = bridge->slots[index];
     /* Scrub before publishing the slot to the producer. CPU-side only;
      * does not establish DMA, cache, MPU, or interrupt priority isolation. */
-    scrub = (volatile uint32_t *)(void *)&bridge->slots[index];
-    scrub[0] = 0;
-    scrub[1] = 0;
+    scrub_slot(&bridge->slots[index]);
     atomic_store_explicit(&bridge->head, head + 1u, memory_order_release);
     return ORES_IRQ_OK;
 }
+

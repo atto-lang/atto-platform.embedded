@@ -39,7 +39,9 @@ ores_irq_status ores_irq_bridge_init(ores_irq_bridge *bridge);
 ores_irq_status ores_irq_bridge_isr_push(
     ores_irq_bridge *bridge, uint32_t source, uint32_t value);
 /* Foreground only: caller routes event through checked actor send API.
- * Event contains no actor heap pointers or capabilities. */
+ * Event contains no actor heap pointers or capabilities. The consumed slot's
+ * complete object representation is erased via volatile character stores
+ * before its release publication to the producer (CPU-side erasure only). */
 ores_irq_status ores_irq_bridge_task_pop(
     ores_irq_bridge *bridge, ores_irq_event *out);
 
@@ -47,3 +49,4 @@ ores_irq_status ores_irq_bridge_task_pop(
 }
 #endif
 #endif
+
