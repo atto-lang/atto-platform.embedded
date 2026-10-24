@@ -211,7 +211,7 @@ void* oreslang_source_actor_spawn_with_capabilities(
     unsigned i;
     ActorSlot *slot=0;
     ActorRef *ref;
-    ActorCapability copied[ORES_STATIC_ACTOR_CAPABILITY_SLOTS]={{0}};
+    ActorCapability copied[ORES_STATIC_ACTOR_CAPABILITY_SLOTS]={0};
     if (fault || current || !init || !handler || fields == 0 ||
         fields > ORES_STATIC_ACTOR_FIELDS || issued >= ORES_STATIC_ACTOR_LIMIT ||
         actor_count > ORES_STATIC_ACTOR_CAPABILITY_SLOTS ||
