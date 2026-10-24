@@ -11,11 +11,10 @@ static int64_t tally(void *heap, uint64_t d, uint64_t e, int64_t v) {
     ores_actor_i64_heap_field_write(heap,d,e,0,next);
     return next;
 }
-static void *consumer_ref;
 static int64_t produce_and_forward(void *heap, uint64_t d, uint64_t e, int64_t v) {
     int64_t next=ores_actor_i64_heap_field_read(heap,d,e,0)+v;
     ores_actor_i64_heap_field_write(heap,d,e,0,next);
-    oreslang_source_actor_send(consumer_ref,v);
+    oreslang_source_actor_send_capability(heap,0,v);
     return next;
 }
 /* Stand-in for LLVM-generated guest ABI; not a real .ores compiler check.
@@ -23,9 +22,10 @@ static int64_t produce_and_forward(void *heap, uint64_t d, uint64_t e, int64_t v
  * executing the consumer inline. */
 static int64_t guest_bootstrap(void) {
     void *b=oreslang_source_actor_spawn(consumer_init,tally,1);
-    void *a;
-    consumer_ref=b;
-    a=oreslang_source_actor_spawn(producer_init,produce_and_forward,1);
+    void *caps[1]={b};
+    void *a=oreslang_source_actor_spawn_with_capabilities(
+        producer_init,produce_and_forward,1,caps,1);
+    caps[0]=0; /* prove the runtime copied capability identity, not the pointer */
     oreslang_source_actor_send(a,1);
     oreslang_source_actor_send(a,2);
     oreslang_source_actor_stop(a);
