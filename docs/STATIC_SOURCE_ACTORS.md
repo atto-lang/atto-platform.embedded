@@ -9,7 +9,8 @@ carrier. All actor state and queue storage is statically allocated.
 ## Bounded execution contract
 
 - Eight actor slots and at most eight source bootstrap spawns per execution.
-- Eight scalar i64 state fields per actor, 16 i64 messages per mailbox.
+- Eight scalar i64 state fields, eight generation-fenced actor capability slots,
+  and 16 i64 messages per mailbox.
 - Bounded direct `send` calls enqueue without blocking. A handler may enqueue
   to a different live actor without executing that actor inline. Self-send from
   a handler and sends from constructors fail closed so a stop-drain loop cannot
@@ -41,12 +42,16 @@ carrier. All actor state and queue storage is statically allocated.
 Source `main` can spawn, send literal messages and stop admitted actors.
 The generated functions use the existing host actor field ABI, not a new
 Oreslang actor syntax. Source actor handlers may update their own private
-i64 fields and return an i64. The **runtime ABI now admits handler-to-other-
-actor enqueue**, and the freestanding C ABI stand-in exercises it, but the
-LLVM source lowering still lacks a way for an actor handler to hold/use an
-ActorRef from source. Therefore the real `.ores` firmware has not yet proved
-source-level actor-to-actor application messaging. ActorRef fields, await,
-supervision and groups remain outside this profile.
+i64 fields and return an i64. The **runtime ABI now admits handler-to-other-actor enqueue** through bounded
+capability slots. Spawn copies only a target slot plus generation; an actor
+handler never needs a raw ActorRef pointer in scalar state. The freestanding
+C ABI stand-in exercises this capability path and overwrites the caller-owned
+pointer array after spawn to prove the runtime copied identity. LLVM PR #943
+implements the matching hosted OresVM capability-slot prerequisite. Real
+`.ores` source still lacks an admitted cross-backend spelling that binds an
+ActorRef capability into actor state, so source-level actor-to-actor application
+messaging is not yet proved. Await, supervision and groups remain outside this
+embedded profile.
 
 ## Tests and negative cases
 
@@ -188,3 +193,26 @@ send rejection. The freestanding ARM ABI stand-in now forwards messages from
 a producer callback into a consumer mailbox. It remains a C stand-in, not
 proof that current LLVM source lowering can express an ActorRef inside an
 Oreslang handler.
+
+
+## Generation-fenced capability slots (2026-10-24)
+
+Each static actor has at most eight compact runtime-owned capabilities. A
+capability stores only the target static slot and target generation. During
+`oreslang_source_actor_spawn_with_capabilities`, every supplied ActorRef is
+validated as live and its identity is copied; the input pointer array is not
+retained. Retirement scrubs the copied capabilities together with the actor's
+fields, mailbox and callbacks.
+
+Handlers use `oreslang_source_actor_send_capability(heap, slot, value)` or
+`oreslang_source_actor_try_send_capability`. The runtime requires `heap` to
+be exactly the currently executing actor, requires handler phase, bounds-checks
+the capability index, verifies the target slot is still live at the recorded
+generation, and rejects self-targeting. The try form returns zero only for a
+full live mailbox; stale or malformed capabilities remain session-fatal.
+
+Native regressions cover copied-pointer independence, full-mailbox try/strict
+behavior, stale target generation, constructor use, and out-of-range capability
+indices. The ARM ABI stand-in now forwards producer messages through capability
+slot zero rather than through a global raw target pointer. This remains ABI
+evidence until a real compiler-emitted `.ores` handler targets the slot.
