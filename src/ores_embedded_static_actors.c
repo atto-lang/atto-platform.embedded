@@ -242,14 +242,35 @@ void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
     if (fault) { fail(); return 0; }
     return ref;
 }
-void oreslang_source_actor_send(void* actor, int64_t payload) {
+/* Enqueue never executes the target actor inline. During a guest turn only a
+ * message handler may enqueue, and only to a different live actor. Self-send
+ * is rejected because a stop-drain loop plus unbounded self-refill would defeat
+ * the finite-turn/WCET contract of this constrained profile. Constructors
+ * likewise cannot publish messages before successful initialization.
+ *
+ * fail_on_full=0 is the cooperative backpressure probe used by generated code:
+ * a full, otherwise-valid target returns 0 without poisoning the session.
+ * Invalid/stale capabilities and forbidden turn contexts still fail closed. */
+static int enqueue_actor_message(void* actor, int64_t payload, int fail_on_full) {
     ActorSlot* slot=lookup_live(actor);
-    if (!slot || fault || current || slot->count >= ORES_STATIC_MAILBOX_CAPACITY) {
-        fail(); return;
+    if (!slot || fault) return 0;
+    if (current && (current->phase != 2 || slot == current)) {
+        fail(); return 0;
+    }
+    if (slot->count >= ORES_STATIC_MAILBOX_CAPACITY) {
+        if (fail_on_full) fail();
+        return 0;
     }
     slot->mailbox[slot->tail]=payload;
     slot->tail=(uint8_t)((slot->tail+1u)%ORES_STATIC_MAILBOX_CAPACITY);
     slot->count++;
+    return 1;
+}
+void oreslang_source_actor_send(void* actor, int64_t payload) {
+    (void)enqueue_actor_message(actor,payload,1);
+}
+int oreslang_source_actor_try_send(void* actor, int64_t payload) {
+    return enqueue_actor_message(actor,payload,0);
 }
 void oreslang_source_actor_stop(void* actor) {
     ActorSlot* slot=lookup_live(actor);
