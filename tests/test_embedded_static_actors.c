@@ -92,6 +92,23 @@ static void capability_constructor_send_init(
     init(heap,domain,epoch);
     oreslang_source_actor_send_capability(heap,0,99);
 }
+static void owned_child_init(void *heap, uint64_t domain, uint64_t epoch) {
+    init(heap,domain,epoch);
+    oreslang_source_actor_spawn_child_capability(
+        heap,0,init,handler,1);
+}
+static int64_t owned_child_handler(void *heap, uint64_t domain,
+                                   uint64_t epoch, int64_t msg) {
+    const int64_t prior=ores_actor_i64_heap_field_read(heap,domain,epoch,0);
+    ores_actor_i64_heap_field_write(heap,domain,epoch,0,prior+msg);
+    oreslang_source_actor_send_capability(heap,0,msg+1);
+    return prior+msg;
+}
+static void bad_owned_child_init(void *heap, uint64_t domain, uint64_t epoch) {
+    init(heap,domain,epoch);
+    oreslang_source_actor_spawn_child_capability(
+        heap,0,duplicate_init,handler,1);
+}
 /* Privileged native-test view of backing storage, not a guest API. */
 static void *marker_heap;
 static const int64_t state_marker=INT64_C(0x3141592653589793);
@@ -413,6 +430,26 @@ int main(int argc, char **argv) {
         assert(ores_embedded_actors_faulted());
         assert(ores_embedded_actors_active()==0);
         assert(ores_embedded_actors_deliveries(0)==0);
+    } else if (strcmp(mode,"owned-child-drain")==0) {
+        first=oreslang_source_actor_spawn(owned_child_init,owned_child_handler,1);
+        assert(first && !ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_spawns()==2);
+        assert(ores_embedded_actors_active()==2);
+        oreslang_source_actor_send(first,5);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==1);
+        assert(ores_embedded_actors_last(0)==15);
+        assert(ores_embedded_actors_deliveries(1)==1);
+        assert(ores_embedded_actors_last(1)==16);
+    } else if (strcmp(mode,"owned-child-constructor-fault")==0) {
+        first=oreslang_source_actor_spawn(
+            bad_owned_child_init,owned_child_handler,1);
+        assert(!first);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_spawns()==2);
     } else if (strcmp(mode,"capability-copy-send")==0) {
         first=oreslang_source_actor_spawn(init,handler,1);
         assert(first);
