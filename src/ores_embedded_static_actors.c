@@ -8,6 +8,8 @@ typedef struct {
     uint8_t valid;
     uint16_t reserved;
 } ActorCapability;
+_Static_assert(sizeof(ActorCapability) == 8u,
+               "static actor capability token must remain 8 bytes");
 typedef struct {
     uint64_t domain, epoch;
     uint32_t generation;
