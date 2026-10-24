@@ -10,8 +10,13 @@ carrier. All actor state and queue storage is statically allocated.
 
 - Eight actor slots and at most eight source bootstrap spawns per execution.
 - Eight scalar i64 state fields per actor, 16 i64 messages per mailbox.
-- Bounded direct `send` calls enqueue without blocking; overflow sets a
-  sticky failure flag. A stop drains queued messages and retires its actor.
+- Bounded direct `send` calls enqueue without blocking. A handler may enqueue
+  to a different live actor without executing that actor inline. Self-send from
+  a handler and sends from constructors fail closed so a stop-drain loop cannot
+  be extended indefinitely from inside a turn. Strict overflow sets a sticky
+  failure flag. `oreslang_source_actor_try_send` instead returns 0 for a full
+  otherwise-valid target so future generated code can yield/retry without
+  unbounded queue growth. A stop drains queued messages and retires its actor.
 - Generation-tagged opaque actor references prevent stale sends after a
   slot has been recycled within the same bootstrap.
 - All actors execute on a single thread, no guest suspension or concurrent
@@ -36,10 +41,12 @@ carrier. All actor state and queue storage is statically allocated.
 Source `main` can spawn, send literal messages and stop admitted actors.
 The generated functions use the existing host actor field ABI, not a new
 Oreslang actor syntax. Source actor handlers may update their own private
-i64 fields and return an i64. **A handler cannot yet send directly to another
-actor**, hold ActorRef fields, suspend/await, or participate in groups. This
-first firmware program proves two source-defined actor handler executions
-and FIFO delivery, not actor-to-actor application messaging.
+i64 fields and return an i64. The **runtime ABI now admits handler-to-other-
+actor enqueue**, and the freestanding C ABI stand-in exercises it, but the
+LLVM source lowering still lacks a way for an actor handler to hold/use an
+ActorRef from source. Therefore the real `.ores` firmware has not yet proved
+source-level actor-to-actor application messaging. ActorRef fields, await,
+supervision and groups remain outside this profile.
 
 ## Tests and negative cases
 
@@ -153,3 +160,31 @@ scenarios plus the two-actor C ABI stand-in on each of GCC/Clang at both
 `-O1` and `-O2` with AddressSanitizer and UndefinedBehaviorSanitizer:
 **112 executions** when run in full. This is a test *requirement*,
 not a claim that GitHub-hosted CI has successfully executed this head.
+
+
+## Cross-actor enqueue and bounded backpressure ABI (2026-10-24)
+
+The static adapter now separates message enqueue from actor execution.
+A handler may call `oreslang_source_actor_send(target, value)` only when
+`target` is a different live actor. The target handler is never invoked
+inline; delivery still occurs later when trusted host/bootstrap code drains
+that actor with `stop`. This keeps actor state non-reentrant.
+
+Self-send is deliberately rejected in this constrained profile. Because
+`stop` drains until a mailbox is empty, a handler that refilled its own
+mailbox could otherwise create an unbounded turn despite the fixed queue
+capacity. Constructor sends are rejected as well, so an actor cannot publish
+messages before its initialization has completed successfully.
+
+`oreslang_source_actor_try_send` uses the same capability and turn checks,
+but returns zero when the target mailbox is full rather than raising the
+sticky session fault. Invalid/stale references, self-send, and constructor
+use still fail closed. This is a low-level backpressure primitive only:
+there is no scheduler yield or `await` continuation in this profile yet.
+
+Native regressions cover successful cross-actor enqueue, full-mailbox
+`try_send`, strict full-mailbox fail-stop, self-send rejection and constructor
+send rejection. The freestanding ARM ABI stand-in now forwards messages from
+a producer callback into a consumer mailbox. It remains a C stand-in, not
+proof that current LLVM source lowering can express an ActorRef inside an
+Oreslang handler.
