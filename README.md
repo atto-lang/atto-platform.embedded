@@ -2,7 +2,7 @@
 
 Embedded and RTOS integration for **Oreslang**, initially targeting Cortex-M and RISC-V.
 
-> **Status: experimental scalar Cortex-M AOT demonstrated in Zephyr/QEMU.** The platform now compiles a limited real `.ores` function to ARM code and links it into Zephyr firmware, alongside a deterministic fixed-capacity C mailbox reference. **Oreslang actors, source-driven mailboxes and hardware isolation are not implemented.**
+> **Status: experimental scalar Cortex-M AOT and restricted source actors.** The platform compiles a limited real `.ores` function to ARM code and links it into Zephyr firmware. A bounded static actor adapter supports compiler-generated scalar actor handlers, generation-fenced refs/capability slots and fixed mailboxes. Full source-level actor-to-actor capability binding, await/supervision and hardware isolation are not implemented.
 
 ## Profiles
 
@@ -50,7 +50,9 @@ cover mailbox overflow and stale capabilities. Read
 
 The runtime ABI now supports bounded **handler-to-other-actor enqueue** without
 inline receiver execution, plus a non-fatal full-mailbox `try_send` primitive.
-The ARM C ABI stand-in exercises that path. Current LLVM source lowering still
-does not expose ActorRef values inside actor handlers, so real `.ores`
-actor-to-actor messaging remains an open compiler/platform integration gate.
+It also has eight generation-fenced capability slots per actor; the ARM C ABI
+stand-in forwards through a copied slot rather than a global target pointer.
+LLVM PR #943 implements the matching hosted runtime foundation. A real `.ores`
+handler still needs an agreed cross-backend source binding for those ActorRef
+capabilities before actor-to-actor messaging can be claimed.
 Await, supervision, and hardware isolation are also not implemented.
