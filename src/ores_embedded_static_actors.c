@@ -3,9 +3,16 @@
 /* All actor storage and message queues are static. No allocation, libc,
  * OS calls or threads. One actor turn is entered at a time. */
 typedef struct {
+    uint32_t generation;
+    uint8_t slot;
+    uint8_t valid;
+    uint16_t reserved;
+} ActorCapability;
+typedef struct {
     uint64_t domain, epoch;
     uint32_t generation;
-    uint8_t active, head, tail, count, fields, phase;
+    uint8_t active, head, tail, count, fields, phase, capability_count;
+    ActorCapability capabilities[ORES_STATIC_ACTOR_CAPABILITY_SLOTS];
     uint8_t mutable_field[ORES_STATIC_ACTOR_FIELDS];
     uint8_t initialized_field[ORES_STATIC_ACTOR_FIELDS];
     int64_t state[ORES_STATIC_ACTOR_FIELDS];
@@ -64,6 +71,7 @@ void ores_embedded_actors_reset(void) {
         slots[i].active = 0;
         slots[i].head = slots[i].tail = slots[i].count = slots[i].fields = 0;
         slots[i].phase = 0;
+        slots[i].capability_count = 0;
         slots[i].deliveries = 0;
         slots[i].last = 0;
         slots[i].init = 0; slots[i].handler = 0;
@@ -196,14 +204,34 @@ static void retire_slot(ActorSlot *slot, ActorRef *ref) {
     scrub_bytes(slot,sizeof(*slot));
     slot->generation=generation;
 }
-void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
-        int64_t (*handler)(void*, uint64_t, uint64_t, int64_t), uint64_t fields) {
+void* oreslang_source_actor_spawn_with_capabilities(
+        void (*init)(void*, uint64_t, uint64_t),
+        int64_t (*handler)(void*, uint64_t, uint64_t, int64_t),
+        uint64_t fields, void* const* actors, uint64_t actor_count) {
     unsigned i;
     ActorSlot *slot=0;
     ActorRef *ref;
+    ActorCapability copied[ORES_STATIC_ACTOR_CAPABILITY_SLOTS]={{0}};
     if (fault || current || !init || !handler || fields == 0 ||
-        fields > ORES_STATIC_ACTOR_FIELDS || issued >= ORES_STATIC_ACTOR_LIMIT) {
+        fields > ORES_STATIC_ACTOR_FIELDS || issued >= ORES_STATIC_ACTOR_LIMIT ||
+        actor_count > ORES_STATIC_ACTOR_CAPABILITY_SLOTS ||
+        (actor_count != 0 && !actors)) {
         fail(); return 0;
+    }
+    for (i=0; i<actor_count; ++i) {
+        ActorRef *target=lookup(actors[i]);
+        ActorSlot *target_slot;
+        if (!target || target->slot >= ORES_STATIC_ACTOR_LIMIT) {
+            fail(); return 0;
+        }
+        target_slot=&slots[target->slot];
+        if (!target_slot->active ||
+            target_slot->generation != target->generation) {
+            fail(); return 0;
+        }
+        copied[i].generation=target->generation;
+        copied[i].slot=target->slot;
+        copied[i].valid=1;
     }
     for (i=0; i<ORES_STATIC_ACTOR_LIMIT; ++i) {
         if (!slots[i].active) { slot=&slots[i]; break; }
@@ -215,9 +243,12 @@ void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
     slot->head=slot->tail=slot->count=0;
     slot->phase=0;
     slot->fields=(uint8_t)fields;
+    slot->capability_count=(uint8_t)actor_count;
     slot->domain=1; slot->epoch=slot->generation;
     slot->deliveries=0; slot->last=0;
     slot->init=init; slot->handler=handler;
+    for (i=0; i<ORES_STATIC_ACTOR_CAPABILITY_SLOTS; ++i)
+        slot->capabilities[i]=copied[i];
     for (i=0; i<ORES_STATIC_ACTOR_FIELDS; ++i) {
         slot->state[i]=0;
         slot->mutable_field[i]=0;
@@ -242,6 +273,11 @@ void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
     if (fault) { fail(); return 0; }
     return ref;
 }
+void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
+        int64_t (*handler)(void*, uint64_t, uint64_t, int64_t), uint64_t fields) {
+    return oreslang_source_actor_spawn_with_capabilities(
+        init,handler,fields,0,0);
+}
 /* Enqueue never executes the target actor inline. During a guest turn only a
  * message handler may enqueue, and only to a different live actor. Self-send
  * is rejected because a stop-drain loop plus unbounded self-refill would defeat
@@ -251,9 +287,10 @@ void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
  * fail_on_full=0 is the cooperative backpressure probe used by generated code:
  * a full, otherwise-valid target returns 0 without poisoning the session.
  * Invalid/stale capabilities and forbidden turn contexts still fail closed. */
-static int enqueue_actor_message(void* actor, int64_t payload, int fail_on_full) {
-    ActorSlot* slot=lookup_live(actor);
-    if (!slot || fault) return 0;
+static int enqueue_slot(ActorSlot* slot, int64_t payload, int fail_on_full) {
+    if (!slot || fault || !slot->active) {
+        fail(); return 0;
+    }
     if (current && (current->phase != 2 || slot == current)) {
         fail(); return 0;
     }
@@ -266,11 +303,45 @@ static int enqueue_actor_message(void* actor, int64_t payload, int fail_on_full)
     slot->count++;
     return 1;
 }
+static int enqueue_actor_message(void* actor, int64_t payload, int fail_on_full) {
+    ActorSlot* slot=lookup_live(actor);
+    if (!slot || fault) return 0;
+    return enqueue_slot(slot,payload,fail_on_full);
+}
+static ActorSlot* capability_target(void* heap, uint64_t capability) {
+    ActorSlot *owner=(ActorSlot*)heap;
+    ActorCapability cap;
+    ActorSlot *target;
+    if (fault || !current || owner != current || current->phase != 2 ||
+        capability >= current->capability_count) {
+        fail(); return 0;
+    }
+    cap=current->capabilities[capability];
+    if (!cap.valid || cap.slot >= ORES_STATIC_ACTOR_LIMIT) {
+        fail(); return 0;
+    }
+    target=&slots[cap.slot];
+    if (!target->active || target->generation != cap.generation ||
+        target == current) {
+        fail(); return 0;
+    }
+    return target;
+}
 void oreslang_source_actor_send(void* actor, int64_t payload) {
     (void)enqueue_actor_message(actor,payload,1);
 }
 int oreslang_source_actor_try_send(void* actor, int64_t payload) {
     return enqueue_actor_message(actor,payload,0);
+}
+void oreslang_source_actor_send_capability(
+        void* heap, uint64_t capability, int64_t payload) {
+    ActorSlot *target=capability_target(heap,capability);
+    if (target) (void)enqueue_slot(target,payload,1);
+}
+int oreslang_source_actor_try_send_capability(
+        void* heap, uint64_t capability, int64_t payload) {
+    ActorSlot *target=capability_target(heap,capability);
+    return target ? enqueue_slot(target,payload,0) : 0;
 }
 void oreslang_source_actor_stop(void* actor) {
     ActorSlot* slot=lookup_live(actor);
