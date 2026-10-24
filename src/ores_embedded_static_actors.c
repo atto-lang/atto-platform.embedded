@@ -272,7 +272,13 @@ static ActorRef* spawn_actor_internal(
     current=parent;
     for (i=0; i<fields; ++i)
         if (!slot->initialized_field[i]) fail();
-    if (fault) return 0;
+    if (fault) {
+        /* Nested constructor failure is scrubbed by the outermost constructor
+         * boundary. A top-level spawn has no parent callback to do that, so
+         * retire the entire failed session now. */
+        if (!parent) fail();
+        return 0;
+    }
     return ref;
 }
 
