@@ -1,10 +1,5 @@
 #include "ores_embedded_static_actors.h"
 
-static void producer_init(void *heap, uint64_t d, uint64_t e) {
-    ores_actor_i64_heap_field_init_mutable(heap,d,e,0,0);
-    oreslang_source_actor_spawn_child_capability(
-        heap,0,consumer_init,tally,1);
-}
 static void consumer_init(void *heap, uint64_t d, uint64_t e) {
     ores_actor_i64_heap_field_init_mutable(heap,d,e,0,10);
 }
@@ -12,6 +7,11 @@ static int64_t tally(void *heap, uint64_t d, uint64_t e, int64_t v) {
     int64_t next=ores_actor_i64_heap_field_read(heap,d,e,0)+v;
     ores_actor_i64_heap_field_write(heap,d,e,0,next);
     return next;
+}
+static void producer_init(void *heap, uint64_t d, uint64_t e) {
+    ores_actor_i64_heap_field_init_mutable(heap,d,e,0,0);
+    oreslang_source_actor_spawn_child_capability(
+        heap,0,consumer_init,tally,1);
 }
 static int64_t produce_and_forward(void *heap, uint64_t d, uint64_t e, int64_t v) {
     int64_t next=ores_actor_i64_heap_field_read(heap,d,e,0)+v;
