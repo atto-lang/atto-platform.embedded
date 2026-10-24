@@ -26,8 +26,7 @@ unsigned ores_embedded_actors_active(void);
 /* Runtime imports required by actual compiler-generated guest actors. */
 void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
     int64_t (*handler)(void*, uint64_t, uint64_t, int64_t), uint64_t fields);
-void oreslang_source_actor_send(void* actor, int64_t payload);
-void oreslang_source_actor_stop(void* actor);
+/* Strict send: bounded enqueue. Host/bootstrap sends and handler-to-other-actor\n * sends are admitted; self-send from a handler and constructor sends fail closed.\n * Mailbox overflow is a sticky session fault. */\nvoid oreslang_source_actor_send(void* actor, int64_t payload);\n/* Backpressure primitive: same capability/turn rules as strict send, but a full\n * live target returns 0 without faulting so generated code can yield/retry.\n * Returns 1 only when the payload was enqueued. */\nint oreslang_source_actor_try_send(void* actor, int64_t payload);\nvoid oreslang_source_actor_stop(void* actor);
 void ores_actor_i64_heap_field_init(void* heap, uint64_t domain,
     uint64_t epoch, uint64_t index, int64_t value);
 void ores_actor_i64_heap_field_init_mutable(void* heap, uint64_t domain,
