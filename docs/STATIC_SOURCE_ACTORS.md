@@ -43,15 +43,22 @@ Source `main` can spawn, send literal messages and stop admitted actors.
 The generated functions use the existing host actor field ABI, not a new
 Oreslang actor syntax. Source actor handlers may update their own private
 i64 fields and return an i64. The **runtime ABI now admits handler-to-other-actor enqueue** through bounded
-capability slots. Spawn copies only a target slot plus generation; an actor
-handler never needs a raw ActorRef pointer in scalar state. The freestanding
-C ABI stand-in exercises this capability path and overwrites the caller-owned
-pointer array after spawn to prove the runtime copied identity. LLVM PR #943
-implements the matching hosted OresVM capability-slot prerequisite. Real
-`.ores` source still lacks an admitted cross-backend spelling that binds an
-ActorRef capability into actor state, so source-level actor-to-actor application
-messaging is not yet proved. Await, supervision and groups remain outside this
-embedded profile.
+capability slots. Externally supplied peer capabilities still copy only target
+slot plus generation, but the canonical structured-child path is now
+constructor-owned: `oreslang_source_actor_spawn_child_capability` creates the
+child from static storage, records its generation-fenced capability in the
+parent, and marks that slot as lifecycle-owned. Parent `stop` drains owned
+children before retiring the parent; ordinary peer capabilities are not
+implicitly lifecycle-owned.
+
+The freestanding ARM C ABI stand-in now exercises that constructor-owned path:
+only the producer is spawned by bootstrap code; its constructor creates the
+consumer child, and its handler forwards through capability slot zero. LLVM
+PR #943 implements the matching hosted OresVM runtime plus the first
+compiler-lowered native source slice for
+`val ActorRef<Consumer> child = spawn Consumer();`. Full unchanged Java/LLVM
+actor syntax parity is still tracked by common-source #141. Await, supervision
+and groups remain outside this embedded profile.
 
 ## Tests and negative cases
 
@@ -77,10 +84,14 @@ The adapter does not support resuming after a fault.
 The static C adapter remains subject to a **3,072-byte** compile-time
 persistent-storage ceiling using `sizeof` of every adapter-owned static
 variable. The earlier 2,324-byte Cortex-M3 `.bss` receipt predates the
-capability-slot table and must not be reused for this head. AAPCS layout
-analysis estimates the current adapter-owned statics at **2,832 bytes**, but
-the branch is admitted only when the target compiler executes the existing
-`_Static_assert` and a new object-size receipt is recorded. None of these
+capability-slot table and must not be reused for this head. A
+`clang --target=thumbv7m-none-eabi -mcpu=cortex-m3` record-layout check on
+the exact current struct definitions reports `ActorSlot=328` bytes and
+`ActorRef=24` bytes; with eight of each plus the adapter globals this is
+**2,832 bytes**. The new owned-child mask occupies prior padding, so it does
+not increase that layout. This is layout evidence only: promotion still
+requires the target compiler to execute the existing `_Static_assert` and
+a fresh object-size/link receipt. None of these
 numbers includes Zephyr kernel RAM, per-thread stacks, link-time alignment,
 heap elsewhere in the image, nor WCET. This is not a whole-firmware RAM proof.
 
@@ -220,3 +231,26 @@ behavior, stale target generation, constructor use, and out-of-range capability
 indices. The ARM ABI stand-in now forwards producer messages through capability
 slot zero rather than through a global raw target pointer. This remains ABI
 evidence until a real compiler-emitted `.ores` handler targets the slot.
+
+
+## Structured child capabilities
+
+`oreslang_source_actor_spawn_child_capability` is permitted only during the
+current actor's constructor and only for the next dense capability slot. The
+runtime temporarily enters the child constructor while preserving the outer
+parent-constructor context, then restores the parent. The child capability is
+stored as compact slot+generation identity and the parent records lifecycle
+ownership in a bounded bit mask.
+
+On parent stop, parent mail drains first; then only capability slots marked as
+owned children are recursively drained and retired before the parent slot is
+scrubbed. Externally injected peer capabilities remain non-owning. Nested child
+constructor failure is held as a sticky session fault until the outermost
+constructor boundary, where the normal fail-stop scrub retires every active
+slot.
+
+Regressions `owned-child-drain` and `owned-child-constructor-fault` cover the
+positive lifecycle path and nested initialization failure. The ARM ABI stand-in
+uses the same constructor-owned path. These tests are registered in CTest and
+the GCC/Clang ASan+UBSan matrix, but current GitHub-hosted jobs still fail
+before allocating steps, so registration is not execution evidence.
