@@ -48,6 +48,9 @@ compiler-generated actor handlers into Zephyr/QEMU. Host sanitizer tests
 cover mailbox overflow and stale capabilities. Read
 [static source actor contract](docs/STATIC_SOURCE_ACTORS.md).
 
-The current proof is limited to source **bootstrap-to-actor** messaging and
-handler execution; actor-to-actor sends from inside handlers, await,
-supervision, and hardware isolation are not implemented.
+The runtime ABI now supports bounded **handler-to-other-actor enqueue** without
+inline receiver execution, plus a non-fatal full-mailbox `try_send` primitive.
+The ARM C ABI stand-in exercises that path. Current LLVM source lowering still
+does not expose ActorRef values inside actor handlers, so real `.ores`
+actor-to-actor messaging remains an open compiler/platform integration gate.
+Await, supervision, and hardware isolation are also not implemented.
