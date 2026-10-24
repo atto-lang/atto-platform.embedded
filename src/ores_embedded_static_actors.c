@@ -14,6 +14,7 @@ typedef struct {
     uint64_t domain, epoch;
     uint32_t generation;
     uint8_t active, head, tail, count, fields, phase, capability_count;
+    uint8_t owned_child_mask;
     ActorCapability capabilities[ORES_STATIC_ACTOR_CAPABILITY_SLOTS];
     uint8_t mutable_field[ORES_STATIC_ACTOR_FIELDS];
     uint8_t initialized_field[ORES_STATIC_ACTOR_FIELDS];
@@ -74,6 +75,7 @@ void ores_embedded_actors_reset(void) {
         slots[i].head = slots[i].tail = slots[i].count = slots[i].fields = 0;
         slots[i].phase = 0;
         slots[i].capability_count = 0;
+        slots[i].owned_child_mask = 0;
         slots[i].deliveries = 0;
         slots[i].last = 0;
         slots[i].init = 0; slots[i].handler = 0;
@@ -206,17 +208,81 @@ static void retire_slot(ActorSlot *slot, ActorRef *ref) {
     scrub_bytes(slot,sizeof(*slot));
     slot->generation=generation;
 }
+static ActorRef* spawn_actor_internal(
+        void (*init)(void*, uint64_t, uint64_t),
+        int64_t (*handler)(void*, uint64_t, uint64_t, int64_t),
+        uint64_t fields,
+        const ActorCapability *copied,
+        uint64_t actor_count,
+        int constructor_child) {
+    unsigned i;
+    ActorSlot *slot=0;
+    ActorRef *ref;
+    ActorSlot *parent=current;
+    if (fault || !init || !handler || fields == 0 ||
+        fields > ORES_STATIC_ACTOR_FIELDS || issued >= ORES_STATIC_ACTOR_LIMIT ||
+        actor_count > ORES_STATIC_ACTOR_CAPABILITY_SLOTS ||
+        (actor_count != 0 && !copied) ||
+        (!constructor_child && current) ||
+        (constructor_child && (!current || current->phase != 1))) {
+        fail(); return 0;
+    }
+    for (i=0; i<ORES_STATIC_ACTOR_LIMIT; ++i) {
+        if (!slots[i].active) { slot=&slots[i]; break; }
+    }
+    if (!slot) { fail(); return 0; }
+    if (slot->generation == UINT32_MAX) { fail(); return 0; }
+    slot->generation++;
+    slot->active=1;
+    slot->head=slot->tail=slot->count=0;
+    slot->phase=0;
+    slot->fields=(uint8_t)fields;
+    slot->capability_count=(uint8_t)actor_count;
+    slot->owned_child_mask=0;
+    slot->domain=1; slot->epoch=slot->generation;
+    slot->deliveries=0; slot->last=0;
+    slot->init=init; slot->handler=handler;
+    for (i=0; i<ORES_STATIC_ACTOR_CAPABILITY_SLOTS; ++i) {
+        slot->capabilities[i].generation=0;
+        slot->capabilities[i].slot=0;
+        slot->capabilities[i].valid=0;
+        slot->capabilities[i].reserved=0;
+    }
+    for (i=0; i<actor_count; ++i)
+        slot->capabilities[i]=copied[i];
+    for (i=0; i<ORES_STATIC_ACTOR_FIELDS; ++i) {
+        slot->state[i]=0;
+        slot->mutable_field[i]=0;
+        slot->initialized_field[i]=0;
+    }
+    for (i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
+        slot->mailbox[i]=0;
+    ref=&refs[issued++];
+    ref->generation=slot->generation;
+    ref->slot=(uint8_t)(slot-slots);
+    ref->issued=1;
+    ref->deliveries=0;
+    ref->last=0;
+    active_count++;
+
+    current=slot;
+    slot->phase=1;
+    slot->init(slot,slot->domain,slot->epoch);
+    slot->phase=0;
+    current=parent;
+    for (i=0; i<fields; ++i)
+        if (!slot->initialized_field[i]) fail();
+    if (fault) return 0;
+    return ref;
+}
+
 void* oreslang_source_actor_spawn_with_capabilities(
         void (*init)(void*, uint64_t, uint64_t),
         int64_t (*handler)(void*, uint64_t, uint64_t, int64_t),
         uint64_t fields, void* const* actors, uint64_t actor_count) {
     unsigned i;
-    ActorSlot *slot=0;
-    ActorRef *ref;
     ActorCapability copied[ORES_STATIC_ACTOR_CAPABILITY_SLOTS]={0};
-    if (fault || current || !init || !handler || fields == 0 ||
-        fields > ORES_STATIC_ACTOR_FIELDS || issued >= ORES_STATIC_ACTOR_LIMIT ||
-        actor_count > ORES_STATIC_ACTOR_CAPABILITY_SLOTS ||
+    if (fault || current || actor_count > ORES_STATIC_ACTOR_CAPABILITY_SLOTS ||
         (actor_count != 0 && !actors)) {
         fail(); return 0;
     }
@@ -235,51 +301,38 @@ void* oreslang_source_actor_spawn_with_capabilities(
         copied[i].slot=target->slot;
         copied[i].valid=1;
     }
-    for (i=0; i<ORES_STATIC_ACTOR_LIMIT; ++i) {
-        if (!slots[i].active) { slot=&slots[i]; break; }
-    }
-    if (!slot) { fail(); return 0; }
-    if (slot->generation == UINT32_MAX) { fail(); return 0; }
-    slot->generation++;
-    slot->active=1;
-    slot->head=slot->tail=slot->count=0;
-    slot->phase=0;
-    slot->fields=(uint8_t)fields;
-    slot->capability_count=(uint8_t)actor_count;
-    slot->domain=1; slot->epoch=slot->generation;
-    slot->deliveries=0; slot->last=0;
-    slot->init=init; slot->handler=handler;
-    for (i=0; i<ORES_STATIC_ACTOR_CAPABILITY_SLOTS; ++i)
-        slot->capabilities[i]=copied[i];
-    for (i=0; i<ORES_STATIC_ACTOR_FIELDS; ++i) {
-        slot->state[i]=0;
-        slot->mutable_field[i]=0;
-        slot->initialized_field[i]=0;
-    }
-    for (i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
-        slot->mailbox[i]=0;
-    ref=&refs[issued++];
-    ref->generation=slot->generation;
-    ref->slot=(uint8_t)(slot-slots);
-    ref->issued=1;
-    ref->deliveries=0;
-    ref->last=0;
-    active_count++;
-    current=slot;
-    slot->phase=1;
-    slot->init(slot,slot->domain,slot->epoch);
-    slot->phase=0;
-    current=0;
-    for (i=0; i<fields; ++i)
-        if (!slot->initialized_field[i]) fail();
-    if (fault) { fail(); return 0; }
-    return ref;
+    return spawn_actor_internal(
+        init,handler,fields,copied,actor_count,0);
 }
 void* oreslang_source_actor_spawn(void (*init)(void*, uint64_t, uint64_t),
         int64_t (*handler)(void*, uint64_t, uint64_t, int64_t), uint64_t fields) {
     return oreslang_source_actor_spawn_with_capabilities(
         init,handler,fields,0,0);
 }
+
+void oreslang_source_actor_spawn_child_capability(
+        void* heap, uint64_t capability,
+        void (*init)(void*, uint64_t, uint64_t),
+        int64_t (*handler)(void*, uint64_t, uint64_t, int64_t),
+        uint64_t fields) {
+    ActorSlot *parent=(ActorSlot*)heap;
+    ActorRef *child;
+    if (fault || !current || parent != current || parent->phase != 1 ||
+        capability != parent->capability_count ||
+        capability >= ORES_STATIC_ACTOR_CAPABILITY_SLOTS) {
+        fail(); return;
+    }
+    child=spawn_actor_internal(init,handler,fields,0,0,1);
+    if (!child || fault) return;
+    parent->capabilities[capability].generation=child->generation;
+    parent->capabilities[capability].slot=child->slot;
+    parent->capabilities[capability].valid=1;
+    parent->capabilities[capability].reserved=0;
+    parent->owned_child_mask=(uint8_t)(
+        parent->owned_child_mask | (uint8_t)(1u << capability));
+    parent->capability_count++;
+}
+
 /* Enqueue never executes the target actor inline. During a guest turn only a
  * message handler may enqueue, and only to a different live actor. Self-send
  * is rejected because a stop-drain loop plus unbounded self-refill would defeat
@@ -345,6 +398,19 @@ int oreslang_source_actor_try_send_capability(
     ActorSlot *target=capability_target(heap,capability);
     return target ? enqueue_slot(target,payload,0) : 0;
 }
+static ActorRef* owned_child_ref(ActorCapability capability) {
+    unsigned i;
+    if (!capability.valid || capability.slot >= ORES_STATIC_ACTOR_LIMIT) {
+        fail(); return 0;
+    }
+    for (i=0; i<issued; ++i) {
+        if (refs[i].issued &&
+            refs[i].slot == capability.slot &&
+            refs[i].generation == capability.generation)
+            return &refs[i];
+    }
+    fail(); return 0;
+}
 void oreslang_source_actor_stop(void* actor) {
     ActorSlot* slot=lookup_live(actor);
     if (!slot || fault || current) { fail(); return; }
@@ -369,6 +435,18 @@ void oreslang_source_actor_stop(void* actor) {
          * has returned, so this is a safe global retire/scrub boundary. */
         fail();
         return;
+    }
+    {
+        uint8_t owned=slot->owned_child_mask;
+        uint64_t capability;
+        for (capability=0; capability<slot->capability_count; ++capability) {
+            if ((owned & (uint8_t)(1u << capability)) != 0) {
+                ActorRef *child=owned_child_ref(slot->capabilities[capability]);
+                if (!child) return;
+                oreslang_source_actor_stop(child);
+                if (fault) { fail(); return; }
+            }
+        }
     }
     ActorRef *ref=lookup(actor);
     if (!ref) return;
