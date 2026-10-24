@@ -69,6 +69,29 @@ static void constructor_send_init(void *heap, uint64_t domain, uint64_t epoch) {
     init(heap,domain,epoch);
     oreslang_source_actor_send(handler_send_target,99);
 }
+static int64_t capability_send_handler(void *heap, uint64_t domain,
+                                       uint64_t epoch, int64_t msg) {
+    (void)domain; (void)epoch;
+    oreslang_source_actor_send_capability(heap,0,msg+1);
+    return msg;
+}
+static int64_t capability_try_send_handler(void *heap, uint64_t domain,
+                                           uint64_t epoch, int64_t msg) {
+    (void)domain; (void)epoch;
+    handler_try_result=oreslang_source_actor_try_send_capability(heap,0,msg+1);
+    return handler_try_result ? msg : -msg;
+}
+static int64_t capability_bad_slot_handler(void *heap, uint64_t domain,
+                                           uint64_t epoch, int64_t msg) {
+    (void)domain; (void)epoch;
+    oreslang_source_actor_send_capability(heap,1,msg);
+    return msg;
+}
+static void capability_constructor_send_init(
+        void *heap, uint64_t domain, uint64_t epoch) {
+    init(heap,domain,epoch);
+    oreslang_source_actor_send_capability(heap,0,99);
+}
 /* Privileged native-test view of backing storage, not a guest API. */
 static void *marker_heap;
 static const int64_t state_marker=INT64_C(0x3141592653589793);
@@ -390,6 +413,88 @@ int main(int argc, char **argv) {
         assert(ores_embedded_actors_faulted());
         assert(ores_embedded_actors_active()==0);
         assert(ores_embedded_actors_deliveries(0)==0);
+    } else if (strcmp(mode,"capability-copy-send")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_send_handler,1,caps,1);
+        assert(second);
+        caps[0]=0;
+        oreslang_source_actor_send(second,5);
+        oreslang_source_actor_stop(second);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_last(1)==5);
+        assert(ores_embedded_actors_deliveries(1)==1);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_last(0)==16);
+        assert(ores_embedded_actors_deliveries(0)==1);
+    } else if (strcmp(mode,"capability-try-full")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        for(i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
+            oreslang_source_actor_send(first,(int64_t)i);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_try_send_handler,1,caps,1);
+        assert(second);
+        handler_try_result=-1;
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(!ores_embedded_actors_faulted());
+        assert(handler_try_result==0);
+        assert(ores_embedded_actors_last(1)==-7);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_deliveries(0)==ORES_STATIC_MAILBOX_CAPACITY);
+    } else if (strcmp(mode,"capability-strict-full")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        for(i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
+            oreslang_source_actor_send(first,(int64_t)i);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_send_handler,1,caps,1);
+        assert(second);
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+    } else if (strcmp(mode,"capability-stale")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_send_handler,1,caps,1);
+        assert(second);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(1)==0);
+    } else if (strcmp(mode,"capability-constructor-rejected")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            capability_constructor_send_init,handler,1,caps,1);
+        assert(!second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+    } else if (strcmp(mode,"capability-bad-slot")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_bad_slot_handler,1,caps,1);
+        assert(second);
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
     } else if (strcmp(mode,"guest-cross-actor-last")==0 ||
                strcmp(mode,"guest-cross-actor-deliveries")==0 ||
                strcmp(mode,"guest-constructor-telemetry")==0) {
