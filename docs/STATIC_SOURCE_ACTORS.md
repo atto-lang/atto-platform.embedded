@@ -74,12 +74,15 @@ delivery count remain attached to the originally issued reference. Faults
 are sticky even if no actor has yet been spawned; reset cannot clear them.
 The adapter does not support resuming after a fault.
 
-The static C adapter is now subject to a **3,072-byte** compile-time
+The static C adapter remains subject to a **3,072-byte** compile-time
 persistent-storage ceiling using `sizeof` of every adapter-owned static
-variable. With the audited source compiled for Cortex-M3, the object
-contains **2,324 bytes of `.bss`**. Neither number includes Zephyr kernel
-RAM, per-thread stacks, link-time alignment, heap elsewhere in the image,
-nor WCET. This is not a whole-firmware RAM proof.
+variable. The earlier 2,324-byte Cortex-M3 `.bss` receipt predates the
+capability-slot table and must not be reused for this head. AAPCS layout
+analysis estimates the current adapter-owned statics at **2,832 bytes**, but
+the branch is admitted only when the target compiler executes the existing
+`_Static_assert` and a new object-size receipt is recorded. None of these
+numbers includes Zephyr kernel RAM, per-thread stacks, link-time alignment,
+heap elsewhere in the image, nor WCET. This is not a whole-firmware RAM proof.
 
 The local standalone harness covers 11 fault and lifecycle scenarios on
 GCC and Clang under ASan/UBSan (22 test executions) and ARM cross-compilation.
@@ -160,11 +163,12 @@ The `guest-global-faulted`, `guest-global-spawns`,
 `guest-global-active`, and `guest-global-constructor`
 regressions prove this boundary at the native runtime ABI.
 
-`scripts/verify-static-actors.sh` runs **27** isolated lifecycle/security
-scenarios plus the two-actor C ABI stand-in on each of GCC/Clang at both
-`-O1` and `-O2` with AddressSanitizer and UndefinedBehaviorSanitizer:
-**112 executions** when run in full. This is a test *requirement*,
-not a claim that GitHub-hosted CI has successfully executed this head.
+`scripts/verify-static-actors.sh` runs the complete registered
+lifecycle/security scenario array plus the two-actor C ABI stand-in on each of
+GCC/Clang at both `-O1` and `-O2` with AddressSanitizer and
+UndefinedBehaviorSanitizer. The capability scenarios are part of that array.
+Do not quote the older execution count for this expanded head. This is a test
+*requirement*, not a claim that GitHub-hosted CI has successfully executed it.
 
 
 ## Cross-actor enqueue and bounded backpressure ABI (2026-10-24)
