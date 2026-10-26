@@ -75,9 +75,10 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse --verify HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain --untracked-files=all)"
-      - name: Build IRQ ring with ThreadSanitizer
+      - name: Build IRQ ring with GCC ThreadSanitizer
         run: |
-          cmake -S . -B build-tsan -DCMAKE_C_COMPILER=clang -DBUILD_TESTING=ON \
+          gcc --version
+          cmake -S . -B build-tsan -DCMAKE_C_COMPILER=gcc -DBUILD_TESTING=ON \
             -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
             -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
           cmake --build build-tsan --parallel 2
