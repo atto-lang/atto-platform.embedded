@@ -72,6 +72,28 @@ class BoundedProcessTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'compiler output reader failed'):
                     run_bounded(['fake-compiler'])
 
+    def test_pipe_close_failure_cannot_return_success(self):
+        class BadCloser:
+            def read(self, size):
+                return b''
+            def close(self):
+                raise OSError('injected pipe close fault')
+
+        class FakeProcess:
+            stdout = BadCloser()
+            stderr = io.BytesIO(b'')
+            pid = 99999999
+            returncode = 0
+            def wait(self, timeout=None):
+                return 0
+            def kill(self):
+                pass
+
+        with mock.patch('bounded_process.subprocess.Popen', return_value=FakeProcess()):
+            with mock.patch('bounded_process.os.killpg', create=True):
+                with self.assertRaisesRegex(RuntimeError, 'compiler output reader failed'):
+                    run_bounded(['fake-compiler'])
+
     @unittest.skipUnless(sys.platform.startswith("linux"), "process group semantics tested on Linux")
     def test_descendant_holding_stdout_causes_failure(self):
         # Parent exits normally, but a subprocess inherits the output pipe.
