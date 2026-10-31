@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Bounded compiler execution: total stream budget, timeouts and descendants."""
+import io
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -33,6 +35,42 @@ class BoundedProcessTests(unittest.TestCase):
             self.run_python("pass", max_bytes=0)
         with self.assertRaises(ValueError):
             self.run_python("pass", timeout=0)
+
+    def test_limits_must_be_finite_and_integer_bounded_before_spawn(self):
+        for timeout in (float('nan'), float('inf'), -float('inf'),
+                        True, '10', 3601, 10**1000):
+            with self.subTest(timeout=repr(timeout)):
+                with self.assertRaises(ValueError):
+                    self.run_python("print('should not run')", timeout=timeout)
+        for budget in (float('nan'), float('inf'), 1.5, True,
+                       '1024', -1, 16 * 1024 * 1024 + 1):
+            with self.subTest(max_bytes=repr(budget)):
+                with self.assertRaises(ValueError):
+                    self.run_python("print('should not run')", max_bytes=budget)
+        self.assertIn('ok', self.run_python("print('ok')",
+                      max_bytes=16 * 1024 * 1024, timeout=1).stdout)
+
+    def test_reader_failure_cannot_return_success(self):
+        class BadReader:
+            def read(self, size):
+                raise OSError('injected pipe read fault')
+            def close(self):
+                pass
+
+        class FakeProcess:
+            stdout = BadReader()
+            stderr = io.BytesIO(b'')
+            pid = 99999999
+            returncode = 0
+            def wait(self, timeout=None):
+                return 0
+            def kill(self):
+                pass
+
+        with mock.patch('bounded_process.subprocess.Popen', return_value=FakeProcess()), \\
+             mock.patch('bounded_process.os.killpg', create=True):
+            with self.assertRaisesRegex(RuntimeError, 'compiler output reader failed'):
+                run_bounded(['fake-compiler'])
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "process group semantics tested on Linux")
     def test_descendant_holding_stdout_causes_failure(self):
