@@ -1,4 +1,5 @@
 """Bound captured compiler output while the process is running."""
+import math
 import os
 import signal
 import subprocess
@@ -6,8 +7,14 @@ import threading
 
 
 def run_bounded(argv, timeout=30, max_bytes=1024 * 1024):
-    if timeout <= 0 or max_bytes <= 0:
-        raise ValueError('positive timeout and output budget required')
+    # Validate before spawning. A float/NaN/Infinity byte limit used to pass
+    # the original comparison but then crash a pipe-reader thread at the
+    # slice expression, losing output without a fail-closed error.
+    if (type(timeout) not in (int, float) or not 0 < timeout <= 3600
+            or not math.isfinite(timeout)):
+        raise ValueError('finite positive timeout <=3600 seconds required')
+    if type(max_bytes) is not int or not 0 < max_bytes <= 16 * 1024 * 1024:
+        raise ValueError('integer output budget in (0, 16 MiB] required')
     # A compiler can spawn helpers that inherit stdout/stderr. Isolate their
     # process group so failure or timeout cannot leave descendants running.
     process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -28,6 +35,7 @@ def run_bounded(argv, timeout=30, max_bytes=1024 * 1024):
     chunks = [bytearray(), bytearray()]
     lock = threading.Lock()
     exceeded = threading.Event()
+    reader_errors = []
     total = 0
 
     def drain(pipe, slot):
@@ -44,6 +52,12 @@ def run_bounded(argv, timeout=30, max_bytes=1024 * 1024):
                     if total > max_bytes:
                         exceeded.set()
                         kill_tree()
+        except Exception as error:
+            # Background thread errors must not be silently dropped and turn
+            # an incomplete compiler transcript into a successful receipt.
+            with lock:
+                reader_errors.append(error)
+            kill_tree()
         finally:
             pipe.close()
 
@@ -70,6 +84,8 @@ def run_bounded(argv, timeout=30, max_bytes=1024 * 1024):
                 reader.join(timeout=1)
     if any(reader.is_alive() for reader in readers):
         raise RuntimeError('compiler output pipes remained open after process-group kill')
+    if reader_errors:
+        raise RuntimeError('compiler output reader failed') from reader_errors[0]
     if timed_out:
         raise subprocess.TimeoutExpired(argv, timeout)
     if lingering:
