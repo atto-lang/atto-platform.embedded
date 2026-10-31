@@ -59,7 +59,15 @@ def run_bounded(argv, timeout=30, max_bytes=1024 * 1024):
                 reader_errors.append(error)
             kill_tree()
         finally:
-            pipe.close()
+            try:
+                pipe.close()
+            except Exception as error:
+                # Closing a captured stream is part of a complete transcript.
+                # A close fault in this daemon thread must fail the parent,
+                # just like a read fault, even when the compiler exited 0.
+                with lock:
+                    reader_errors.append(error)
+                kill_tree()
 
     readers = [threading.Thread(target=drain, args=(pipe, i), daemon=True)
                for i, pipe in enumerate((process.stdout, process.stderr))]
