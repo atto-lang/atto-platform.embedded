@@ -67,10 +67,10 @@ class BoundedProcessTests(unittest.TestCase):
             def kill(self):
                 pass
 
-        with mock.patch('bounded_process.subprocess.Popen', return_value=FakeProcess()), \\
-             mock.patch('bounded_process.os.killpg', create=True):
-            with self.assertRaisesRegex(RuntimeError, 'compiler output reader failed'):
-                run_bounded(['fake-compiler'])
+        with mock.patch('bounded_process.subprocess.Popen', return_value=FakeProcess()):
+            with mock.patch('bounded_process.os.killpg', create=True):
+                with self.assertRaisesRegex(RuntimeError, 'compiler output reader failed'):
+                    run_bounded(['fake-compiler'])
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "process group semantics tested on Linux")
     def test_descendant_holding_stdout_causes_failure(self):
