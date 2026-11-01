@@ -119,5 +119,34 @@ class BoundedProcessTests(unittest.TestCase):
             self.assertFalse(marker.exists(), "child survived compiler timeout")
 
 
+    def test_exact_shared_stdout_stderr_budget_is_admitted(self):
+        code = "import os; os.write(1, b'a'*5); os.write(2, b'b'*6)"
+        result = self.run_python(code, max_bytes=11, timeout=3)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, 'a'*5)
+        self.assertEqual(result.stderr, 'b'*6)
+
+    def test_shared_stream_budget_rejects_single_byte_overrun(self):
+        code = "import os; os.write(1, b'a'*5); os.write(2, b'b'*6)"
+        with self.assertRaisesRegex(RuntimeError, "compiler output budget exceeded"):
+            self.run_python(code, max_bytes=10, timeout=3)
+
+    def test_invalid_compiler_encoding_must_not_return_success(self):
+        # Captured compiler diagnostics must not be silently lossy-decoded.
+        code = "import os; os.write(2, bytes([255]))"
+        with self.assertRaises(UnicodeDecodeError):
+            self.run_python(code, timeout=3)
+
+    def test_invalid_budgets_are_rejected_before_process_creation(self):
+        with mock.patch('bounded_process.subprocess.Popen') as spawn:
+            for options in ({'timeout': float('nan')},
+                            {'timeout': True}, {'max_bytes': float('inf')},
+                            {'max_bytes': True}, {'max_bytes': 16*1024*1024+1}):
+                with self.subTest(options=options):
+                    with self.assertRaises(ValueError):
+                        run_bounded(['must-never-run'], **options)
+            spawn.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
