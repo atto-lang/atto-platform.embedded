@@ -9,9 +9,15 @@ carrier. All actor state and queue storage is statically allocated.
 ## Bounded execution contract
 
 - Eight actor slots and at most eight source bootstrap spawns per execution.
-- Eight scalar i64 state fields per actor, 16 i64 messages per mailbox.
-- Bounded direct `send` calls enqueue without blocking; overflow sets a
-  sticky failure flag. A stop drains queued messages and retires its actor.
+- Eight scalar i64 state fields, eight generation-fenced actor capability slots,
+  and 16 i64 messages per mailbox.
+- Bounded direct `send` calls enqueue without blocking. A handler may enqueue
+  to a different live actor without executing that actor inline. Self-send from
+  a handler and sends from constructors fail closed so a stop-drain loop cannot
+  be extended indefinitely from inside a turn. Strict overflow sets a sticky
+  failure flag. `oreslang_source_actor_try_send` instead returns 0 for a full
+  otherwise-valid target so future generated code can yield/retry without
+  unbounded queue growth. A stop drains queued messages and retires its actor.
 - Generation-tagged opaque actor references prevent stale sends after a
   slot has been recycled within the same bootstrap.
 - All actors execute on a single thread, no guest suspension or concurrent
@@ -36,10 +42,23 @@ carrier. All actor state and queue storage is statically allocated.
 Source `main` can spawn, send literal messages and stop admitted actors.
 The generated functions use the existing host actor field ABI, not a new
 Oreslang actor syntax. Source actor handlers may update their own private
-i64 fields and return an i64. **A handler cannot yet send directly to another
-actor**, hold ActorRef fields, suspend/await, or participate in groups. This
-first firmware program proves two source-defined actor handler executions
-and FIFO delivery, not actor-to-actor application messaging.
+i64 fields and return an i64. The **runtime ABI now admits handler-to-other-actor enqueue** through bounded
+capability slots. Externally supplied peer capabilities still copy only target
+slot plus generation, but the canonical structured-child path is now
+constructor-owned: `oreslang_source_actor_spawn_child_capability` creates the
+child from static storage, records its generation-fenced capability in the
+parent, and marks that slot as lifecycle-owned. Parent `stop` drains owned
+children before retiring the parent; ordinary peer capabilities are not
+implicitly lifecycle-owned.
+
+The freestanding ARM C ABI stand-in now exercises that constructor-owned path:
+only the producer is spawned by bootstrap code; its constructor creates the
+consumer child, and its handler forwards through capability slot zero. LLVM
+PR #943 implements the matching hosted OresVM runtime plus the first
+compiler-lowered native source slice for
+`val ActorRef<Consumer> child = spawn Consumer();`. Full unchanged Java/LLVM
+actor syntax parity is still tracked by common-source #141. Await, supervision
+and groups remain outside this embedded profile.
 
 ## Tests and negative cases
 
@@ -62,12 +81,19 @@ delivery count remain attached to the originally issued reference. Faults
 are sticky even if no actor has yet been spawned; reset cannot clear them.
 The adapter does not support resuming after a fault.
 
-The static C adapter is now subject to a **3,072-byte** compile-time
+The static C adapter remains subject to a **3,072-byte** compile-time
 persistent-storage ceiling using `sizeof` of every adapter-owned static
-variable. With the audited source compiled for Cortex-M3, the object
-contains **2,324 bytes of `.bss`**. Neither number includes Zephyr kernel
-RAM, per-thread stacks, link-time alignment, heap elsewhere in the image,
-nor WCET. This is not a whole-firmware RAM proof.
+variable. The earlier 2,324-byte Cortex-M3 `.bss` receipt predates the
+capability-slot table and must not be reused for this head. A
+`clang --target=thumbv7m-none-eabi -mcpu=cortex-m3` record-layout check on
+the exact current struct definitions reports `ActorSlot=328` bytes and
+`ActorRef=24` bytes; with eight of each plus the adapter globals this is
+**2,832 bytes**. The new owned-child mask occupies prior padding, so it does
+not increase that layout. This is layout evidence only: promotion still
+requires the target compiler to execute the existing `_Static_assert` and
+a fresh object-size/link receipt. None of these
+numbers includes Zephyr kernel RAM, per-thread stacks, link-time alignment,
+heap elsewhere in the image, nor WCET. This is not a whole-firmware RAM proof.
 
 The local standalone harness covers 11 fault and lifecycle scenarios on
 GCC and Clang under ASan/UBSan (22 test executions) and ARM cross-compilation.
@@ -148,8 +174,83 @@ The `guest-global-faulted`, `guest-global-spawns`,
 `guest-global-active`, and `guest-global-constructor`
 regressions prove this boundary at the native runtime ABI.
 
-`scripts/verify-static-actors.sh` runs **27** isolated lifecycle/security
-scenarios plus the two-actor C ABI stand-in on each of GCC/Clang at both
-`-O1` and `-O2` with AddressSanitizer and UndefinedBehaviorSanitizer:
-**112 executions** when run in full. This is a test *requirement*,
-not a claim that GitHub-hosted CI has successfully executed this head.
+`scripts/verify-static-actors.sh` runs the complete registered
+lifecycle/security scenario array plus the two-actor C ABI stand-in on each of
+GCC/Clang at both `-O1` and `-O2` with AddressSanitizer and
+UndefinedBehaviorSanitizer. The capability scenarios are part of that array.
+Do not quote the older execution count for this expanded head. This is a test
+*requirement*, not a claim that GitHub-hosted CI has successfully executed it.
+
+
+## Cross-actor enqueue and bounded backpressure ABI (2026-10-24)
+
+The static adapter now separates message enqueue from actor execution.
+A handler may call `oreslang_source_actor_send(target, value)` only when
+`target` is a different live actor. The target handler is never invoked
+inline; delivery still occurs later when trusted host/bootstrap code drains
+that actor with `stop`. This keeps actor state non-reentrant.
+
+Self-send is deliberately rejected in this constrained profile. Because
+`stop` drains until a mailbox is empty, a handler that refilled its own
+mailbox could otherwise create an unbounded turn despite the fixed queue
+capacity. Constructor sends are rejected as well, so an actor cannot publish
+messages before its initialization has completed successfully.
+
+`oreslang_source_actor_try_send` uses the same capability and turn checks,
+but returns zero when the target mailbox is full rather than raising the
+sticky session fault. Invalid/stale references, self-send, and constructor
+use still fail closed. This is a low-level backpressure primitive only:
+there is no scheduler yield or `await` continuation in this profile yet.
+
+Native regressions cover successful cross-actor enqueue, full-mailbox
+`try_send`, strict full-mailbox fail-stop, self-send rejection and constructor
+send rejection. The freestanding ARM ABI stand-in now forwards messages from
+a producer callback into a consumer mailbox. It remains a C stand-in, not
+proof that current LLVM source lowering can express an ActorRef inside an
+Oreslang handler.
+
+
+## Generation-fenced capability slots (2026-10-24)
+
+Each static actor has at most eight compact runtime-owned capabilities. A
+capability stores only the target static slot and target generation. During
+`oreslang_source_actor_spawn_with_capabilities`, every supplied ActorRef is
+validated as live and its identity is copied; the input pointer array is not
+retained. Retirement scrubs the copied capabilities together with the actor's
+fields, mailbox and callbacks.
+
+Handlers use `oreslang_source_actor_send_capability(heap, slot, value)` or
+`oreslang_source_actor_try_send_capability`. The runtime requires `heap` to
+be exactly the currently executing actor, requires handler phase, bounds-checks
+the capability index, verifies the target slot is still live at the recorded
+generation, and rejects self-targeting. The try form returns zero only for a
+full live mailbox; stale or malformed capabilities remain session-fatal.
+
+Native regressions cover copied-pointer independence, full-mailbox try/strict
+behavior, stale target generation, constructor use, and out-of-range capability
+indices. The ARM ABI stand-in now forwards producer messages through capability
+slot zero rather than through a global raw target pointer. This remains ABI
+evidence until a real compiler-emitted `.ores` handler targets the slot.
+
+
+## Structured child capabilities
+
+`oreslang_source_actor_spawn_child_capability` is permitted only during the
+current actor's constructor and only for the next dense capability slot. The
+runtime temporarily enters the child constructor while preserving the outer
+parent-constructor context, then restores the parent. The child capability is
+stored as compact slot+generation identity and the parent records lifecycle
+ownership in a bounded bit mask.
+
+On parent stop, parent mail drains first; then only capability slots marked as
+owned children are recursively drained and retired before the parent slot is
+scrubbed. Externally injected peer capabilities remain non-owning. Nested child
+constructor failure is held as a sticky session fault until the outermost
+constructor boundary, where the normal fail-stop scrub retires every active
+slot.
+
+Regressions `owned-child-drain` and `owned-child-constructor-fault` cover the
+positive lifecycle path and nested initialization failure. The ARM ABI stand-in
+uses the same constructor-owned path. These tests are registered in CTest and
+the GCC/Clang ASan+UBSan matrix, but current GitHub-hosted jobs still fail
+before allocating steps, so registration is not execution evidence.

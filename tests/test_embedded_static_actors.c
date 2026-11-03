@@ -41,7 +41,8 @@ static int64_t fault_after_first(void *heap, uint64_t domain,
     return handler(heap,domain,epoch,msg);
 }
 static void *foreign_actor_heap;
-static void *reentrant_actor_ref;
+static void *handler_send_target;
+static int handler_try_result;
 static void shared_init(void *heap, uint64_t domain, uint64_t epoch) {
     init(heap,domain,epoch);
     foreign_actor_heap=heap;
@@ -52,11 +53,61 @@ static int64_t cross_heap_handler(void *heap, uint64_t domain,
     (void)ores_actor_i64_heap_field_read(foreign_actor_heap,domain,epoch,0);
     return msg;
 }
-static int64_t reentrant_send_handler(void *heap, uint64_t domain,
-                                      uint64_t epoch, int64_t msg) {
+static int64_t cross_actor_send_handler(void *heap, uint64_t domain,
+                                        uint64_t epoch, int64_t msg) {
     (void)heap; (void)domain; (void)epoch;
-    oreslang_source_actor_send(reentrant_actor_ref,msg+1);
+    oreslang_source_actor_send(handler_send_target,msg+1);
     return msg;
+}
+static int64_t cross_actor_try_send_handler(void *heap, uint64_t domain,
+                                            uint64_t epoch, int64_t msg) {
+    (void)heap; (void)domain; (void)epoch;
+    handler_try_result=oreslang_source_actor_try_send(handler_send_target,msg+1);
+    return handler_try_result ? msg : -msg;
+}
+static void constructor_send_init(void *heap, uint64_t domain, uint64_t epoch) {
+    init(heap,domain,epoch);
+    oreslang_source_actor_send(handler_send_target,99);
+}
+static int64_t capability_send_handler(void *heap, uint64_t domain,
+                                       uint64_t epoch, int64_t msg) {
+    (void)domain; (void)epoch;
+    oreslang_source_actor_send_capability(heap,0,msg+1);
+    return msg;
+}
+static int64_t capability_try_send_handler(void *heap, uint64_t domain,
+                                           uint64_t epoch, int64_t msg) {
+    (void)domain; (void)epoch;
+    handler_try_result=oreslang_source_actor_try_send_capability(heap,0,msg+1);
+    return handler_try_result ? msg : -msg;
+}
+static int64_t capability_bad_slot_handler(void *heap, uint64_t domain,
+                                           uint64_t epoch, int64_t msg) {
+    (void)domain; (void)epoch;
+    oreslang_source_actor_send_capability(heap,1,msg);
+    return msg;
+}
+static void capability_constructor_send_init(
+        void *heap, uint64_t domain, uint64_t epoch) {
+    init(heap,domain,epoch);
+    oreslang_source_actor_send_capability(heap,0,99);
+}
+static void owned_child_init(void *heap, uint64_t domain, uint64_t epoch) {
+    init(heap,domain,epoch);
+    oreslang_source_actor_spawn_child_capability(
+        heap,0,init,handler,1);
+}
+static int64_t owned_child_handler(void *heap, uint64_t domain,
+                                   uint64_t epoch, int64_t msg) {
+    const int64_t prior=ores_actor_i64_heap_field_read(heap,domain,epoch,0);
+    ores_actor_i64_heap_field_write(heap,domain,epoch,0,prior+msg);
+    oreslang_source_actor_send_capability(heap,0,msg+1);
+    return prior+msg;
+}
+static void bad_owned_child_init(void *heap, uint64_t domain, uint64_t epoch) {
+    init(heap,domain,epoch);
+    oreslang_source_actor_spawn_child_capability(
+        heap,0,duplicate_init,handler,1);
 }
 /* Privileged native-test view of backing storage, not a guest API. */
 static void *marker_heap;
@@ -311,15 +362,176 @@ int main(int argc, char **argv) {
         assert(ores_embedded_actors_active()==0);
         assert(ores_embedded_actors_deliveries(0)==0);
         assert(ores_embedded_actors_deliveries(1)==0);
-    } else if (strcmp(mode,"reentrant-send")==0) {
-        first=oreslang_source_actor_spawn(init,reentrant_send_handler,1);
+    } else if (strcmp(mode,"actor-to-actor-send")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        second=oreslang_source_actor_spawn(init,cross_actor_send_handler,1);
+        assert(first && second);
+        handler_send_target=first;
+        oreslang_source_actor_send(second,5);
+        oreslang_source_actor_stop(second);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==1);
+        assert(ores_embedded_actors_deliveries(0)==0);
+        assert(ores_embedded_actors_deliveries(1)==1);
+        assert(ores_embedded_actors_last(1)==5);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==1);
+        assert(ores_embedded_actors_last(0)==16);
+    } else if (strcmp(mode,"actor-to-actor-try-full")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
         assert(first);
-        reentrant_actor_ref=first;
+        for(i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
+            oreslang_source_actor_send(first,(int64_t)i);
+        second=oreslang_source_actor_spawn(init,cross_actor_try_send_handler,1);
+        assert(second);
+        handler_send_target=first;
+        handler_try_result=-1;
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(!ores_embedded_actors_faulted());
+        assert(handler_try_result==0);
+        assert(ores_embedded_actors_last(1)==-7);
+        assert(ores_embedded_actors_active()==1);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_deliveries(0)==ORES_STATIC_MAILBOX_CAPACITY);
+        assert(ores_embedded_actors_last(0)==130);
+    } else if (strcmp(mode,"actor-to-actor-strict-full")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        for(i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
+            oreslang_source_actor_send(first,(int64_t)i);
+        second=oreslang_source_actor_spawn(init,cross_actor_send_handler,1);
+        assert(second);
+        handler_send_target=first;
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==0);
+        assert(ores_embedded_actors_deliveries(1)==0);
+    } else if (strcmp(mode,"self-send-rejected")==0) {
+        first=oreslang_source_actor_spawn(init,cross_actor_send_handler,1);
+        assert(first);
+        handler_send_target=first;
         oreslang_source_actor_send(first,1);
         oreslang_source_actor_stop(first);
         assert(ores_embedded_actors_faulted());
         assert(ores_embedded_actors_active()==0);
         assert(ores_embedded_actors_deliveries(0)==0);
+    } else if (strcmp(mode,"constructor-send-rejected")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        handler_send_target=first;
+        second=oreslang_source_actor_spawn(constructor_send_init,handler,1);
+        assert(!second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==0);
+    } else if (strcmp(mode,"owned-child-drain")==0) {
+        first=oreslang_source_actor_spawn(owned_child_init,owned_child_handler,1);
+        assert(first && !ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_spawns()==2);
+        assert(ores_embedded_actors_active()==2);
+        oreslang_source_actor_send(first,5);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(0)==1);
+        assert(ores_embedded_actors_last(0)==15);
+        assert(ores_embedded_actors_deliveries(1)==1);
+        assert(ores_embedded_actors_last(1)==16);
+    } else if (strcmp(mode,"owned-child-constructor-fault")==0) {
+        first=oreslang_source_actor_spawn(
+            bad_owned_child_init,owned_child_handler,1);
+        assert(!first);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_spawns()==2);
+    } else if (strcmp(mode,"capability-copy-send")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_send_handler,1,caps,1);
+        assert(second);
+        caps[0]=0;
+        oreslang_source_actor_send(second,5);
+        oreslang_source_actor_stop(second);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_last(1)==5);
+        assert(ores_embedded_actors_deliveries(1)==1);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_last(0)==16);
+        assert(ores_embedded_actors_deliveries(0)==1);
+    } else if (strcmp(mode,"capability-try-full")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        for(i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
+            oreslang_source_actor_send(first,(int64_t)i);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_try_send_handler,1,caps,1);
+        assert(second);
+        handler_try_result=-1;
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(!ores_embedded_actors_faulted());
+        assert(handler_try_result==0);
+        assert(ores_embedded_actors_last(1)==-7);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_deliveries(0)==ORES_STATIC_MAILBOX_CAPACITY);
+    } else if (strcmp(mode,"capability-strict-full")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        for(i=0; i<ORES_STATIC_MAILBOX_CAPACITY; ++i)
+            oreslang_source_actor_send(first,(int64_t)i);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_send_handler,1,caps,1);
+        assert(second);
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+    } else if (strcmp(mode,"capability-stale")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_send_handler,1,caps,1);
+        assert(second);
+        oreslang_source_actor_stop(first);
+        assert(!ores_embedded_actors_faulted());
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+        assert(ores_embedded_actors_deliveries(1)==0);
+    } else if (strcmp(mode,"capability-constructor-rejected")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            capability_constructor_send_init,handler,1,caps,1);
+        assert(!second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
+    } else if (strcmp(mode,"capability-bad-slot")==0) {
+        first=oreslang_source_actor_spawn(init,handler,1);
+        assert(first);
+        void *caps[1]={first};
+        second=oreslang_source_actor_spawn_with_capabilities(
+            init,capability_bad_slot_handler,1,caps,1);
+        assert(second);
+        oreslang_source_actor_send(second,7);
+        oreslang_source_actor_stop(second);
+        assert(ores_embedded_actors_faulted());
+        assert(ores_embedded_actors_active()==0);
     } else if (strcmp(mode,"guest-cross-actor-last")==0 ||
                strcmp(mode,"guest-cross-actor-deliveries")==0 ||
                strcmp(mode,"guest-constructor-telemetry")==0) {
