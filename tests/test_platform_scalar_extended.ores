@@ -1,0 +1,30 @@
+// TestSuite reference-model assertions only; not native embedded API execution.
+import class TestCase, TestSuite, TestOptions, TestOutcome, RunSummary from "ores.std/testing";
+import fnc expect_true, run_suite, require_success from "ores.std/testing";
+
+fnc ring_next(int cursor,int capacity): int { if cursor + 1 == capacity; do return 0; fi return cursor + 1; }
+
+fnc ring_one_slot(): TestOutcome {
+  return expect_true(ring_next(0,1)==0, "ring_one_slot scalar reference failed");
+}
+fnc ring_middle(): TestOutcome {
+  return expect_true(ring_next(3,8)==4, "ring_middle scalar reference failed");
+}
+fnc ring_last_wrap(): TestOutcome {
+  return expect_true(ring_next(7,8)==0, "ring_last_wrap scalar reference failed");
+}
+fnc ring_two_slot_wrap(): TestOutcome {
+  return expect_true(ring_next(1,2)==0, "ring_two_slot_wrap scalar reference failed");
+}
+pub routine main(): void {
+  val TestSuite suite = new TestSuite("platform-embedded-extended", arr[
+    new TestCase("ring_one_slot", ring_one_slot, false, ""),
+    new TestCase("ring_middle", ring_middle, false, ""),
+    new TestCase("ring_last_wrap", ring_last_wrap, false, ""),
+    new TestCase("ring_two_slot_wrap", ring_two_slot_wrap, false, "")
+  ]);
+  val TestOptions options = new TestOptions("", false, true);
+  val RunSummary summary = run_suite(rt borrow suite, rt borrow options);
+  require_success(rt borrow summary);
+  return;
+}
