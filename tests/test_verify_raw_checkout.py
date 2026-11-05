@@ -343,5 +343,44 @@ class RawCheckoutPreflightTests(unittest.TestCase):
         self.assertNotEqual(self.run_checker().returncode, 0)
 
 
+
+
+class EmbeddedWave22PortablePathBoundaries(unittest.TestCase):
+    """Nested portable checkout path controls in a real temporary Git repo."""
+    setUp = RawCheckoutPreflightTests.setUp
+    run_checker = RawCheckoutPreflightTests.run_checker
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires POSIX filenames")
+    def test_nested_reserved_dos_device_file_is_rejected(self):
+        directory = self.root / "board"
+        directory.mkdir()
+        (directory / "NUL.txt").write_text("device")
+        git(self.root, "add", "board/NUL.txt")
+        git(self.root, "commit", "-qm", "nested reserved device")
+        self.expected = git(self.root, "rev-parse", "HEAD")
+        result = self.run_checker()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("nonportable tracked path", result.stderr)
+
+    def test_nested_nonreserved_com10_name_remains_accepted(self):
+        directory = self.root / "board"
+        directory.mkdir()
+        (directory / "COM10.txt").write_text("ordinary")
+        git(self.root, "add", "board/COM10.txt")
+        git(self.root, "commit", "-qm", "safe nested device-like name")
+        self.expected = git(self.root, "rev-parse", "HEAD")
+        self.assertEqual(self.run_checker().returncode, 0)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires POSIX filenames")
+    def test_nested_superscript_com_device_is_rejected(self):
+        directory = self.root / "board"
+        directory.mkdir()
+        (directory / "COM\u00b3.txt").write_text("device")
+        git(self.root, "add", "board/COM\u00b3.txt")
+        git(self.root, "commit", "-qm", "nested superscript device")
+        self.expected = git(self.root, "rev-parse", "HEAD")
+        self.assertNotEqual(self.run_checker().returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
