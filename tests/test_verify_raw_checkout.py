@@ -382,5 +382,32 @@ class EmbeddedWave22PortablePathBoundaries(unittest.TestCase):
         self.assertNotEqual(self.run_checker().returncode, 0)
 
 
+class EmbeddedWave37GitEnvironmentAdmission(unittest.TestCase):
+    """Prevent inherited Git commands and configuration from changing checkout meaning."""
+    setUp = RawCheckoutPreflightTests.setUp
+    run_checker = RawCheckoutPreflightTests.run_checker
+
+    def test_tool_and_template_overrides_fail_before_git_inspection(self):
+        for key, value in (
+            ("GIT_EXEC_PATH", str(self.root)),
+            ("GIT_TEMPLATE_DIR", str(self.root)),
+            ("GIT_CONFIG_SYSTEM", str(self.root / ".git/config")),
+        ):
+            with self.subTest(name=key):
+                result = self.run_checker(extra_env={key: value})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("inherited Git control environment", result.stderr)
+
+    def test_allowlisted_and_forbidden_controls_cannot_be_mixed(self):
+        result = self.run_checker(extra_env={
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_NO_REPLACE_OBJECTS": "0",
+            "GIT_CONFIG_SYSTEM": str(self.root / ".git/config"),
+        })
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("GIT_CONFIG_SYSTEM", result.stderr)
+
+
+
 if __name__ == "__main__":
     unittest.main()
