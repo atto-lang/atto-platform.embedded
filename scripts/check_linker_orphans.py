@@ -13,7 +13,7 @@ import sys
 import unicodedata
 
 MAX_LOG_BYTES = 16 * 1024 * 1024
-ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\r\n]*(?:\x07|\x1b\\))")
 ORPHAN = re.compile(
     r"\borphan(?:ed)?[\W_]+(?:input[\W_]+)?sections?\b"
     r"|\bsections?\b[^\n]{0,96}\borphan(?:ed)?\b", re.IGNORECASE
