@@ -45,10 +45,8 @@ class LinkerFileAdmissionTests(unittest.TestCase):
 
     def test_truncated_read_is_never_treated_as_clean_log(self):
         self.path.write_bytes(b"Linking zephyr.elf\n")
-        with patch.object(gate.os, "read", return_value=b""):
-            # fdopen().read() does not call os.read(), so use a mock handle
-            # that returns early EOF for the same inode and size.
-            pass
+        # fdopen().read() is buffered; simulate early EOF by replacing the
+        # file handle, while preserving the real underlying fd/fstat result.
         original_open = gate.os.fdopen
         class ShortFile:
             def __init__(self, real):
