@@ -34,6 +34,29 @@ class LinkerLogGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "orphan-section diagnostic"):
             validate(b"ld: warning: orphan \xff section .ARM.extab\n")
 
+    def test_unrecognized_control_bytes_cannot_split_orphan_warning(self):
+        for middle in (b"\\x08", b"\\x00", b"\\x7f", b"\\xc2\\x9b"):
+            warning = b"ld: warning: or" + middle + b"phan section .ARM.extab\\n"
+            with self.subTest(middle=middle):
+                with self.assertRaisesRegex(ValueError, "unsafe control"):
+                    validate(warning)
+
+    def test_invisible_unicode_and_line_separator_cannot_hide_warning(self):
+        for middle in ("\\u200b", "\\u200d", "\\ufeff", "\\u2028", "\\u2029"):
+            raw = ("ld: warning: or" + middle + "phan section .ARM.extab\\n").encode("utf-8")
+            with self.subTest(middle=repr(middle)):
+                with self.assertRaisesRegex(ValueError, "unsafe control"):
+                    validate(raw)
+
+    def test_malformed_utf8_between_warning_letters_is_not_clean(self):
+        with self.assertRaisesRegex(ValueError, "invalid UTF-8"):
+            validate(b"ld: warning: or\\xffphan section .ARM.extab\\n")
+
+    def test_recognized_ansi_and_valid_printable_utf8_remain_accepted(self):
+        validate(b"\\x1b]0;orphan section in terminal title\\x07"
+                 b"[100%] Linking firmware\\r\\n")
+        validate("✓ Linked firmware café\\n".encode("utf-8"))
+
     def test_empty_log(self):
         with self.assertRaisesRegex(ValueError, "empty"):
             validate(b"")
