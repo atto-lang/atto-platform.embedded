@@ -40,7 +40,7 @@ def validate(raw: bytes) -> None:
     for character in cleaned:
         if character in "\r\n\t":
             continue
-        if unicodedata.category(character) in ("Cc", "Cf", "Cs"):
+        if unicodedata.category(character) in ("Cc", "Cf", "Cs", "Zl", "Zp"):
             raise ValueError("unsafe control or invisible format in linker log")
 
 
