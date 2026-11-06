@@ -48,6 +48,12 @@ class LinkerLogGateTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "unsafe control"):
                     validate(raw)
 
+    def test_osc_cannot_swallow_linker_diagnostics_on_next_line(self):
+        # Terminal title escapes cannot span lines and erase a real warning.
+        raw = b"\x1b]0;unfinished title\nld: warning: orphan section .ARM.extab\x07\n"
+        with self.assertRaisesRegex(ValueError, "orphan-section diagnostic at line 2"):
+            validate(raw)
+
     def test_malformed_utf8_between_warning_letters_is_not_clean(self):
         with self.assertRaisesRegex(ValueError, "invalid UTF-8"):
             validate(b"ld: warning: or\xffphan section .ARM.extab\n")
