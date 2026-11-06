@@ -10,9 +10,10 @@ from pathlib import Path
 import re
 import stat
 import sys
+import unicodedata
 
 MAX_LOG_BYTES = 16 * 1024 * 1024
-ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\r\n]*(?:\x07|\x1b\\))")
 ORPHAN = re.compile(
     r"\borphan(?:ed)?[\W_]+(?:input[\W_]+)?sections?\b"
     r"|\bsections?\b[^\n]{0,96}\borphan(?:ed)?\b", re.IGNORECASE
@@ -30,6 +31,17 @@ def validate(raw: bytes) -> None:
         if ORPHAN.search(line):
             detail = "".join(c if c.isprintable() else "?" for c in line).strip()[:240]
             raise ValueError(f"orphan-section diagnostic at line {line_number}: {detail}")
+    # The normal linker warning must be found even when its ASCII letters are
+    # separated by adversarial controls. Recognized ANSI escapes are removed
+    # first; unrecognized C0/C1, invisible Unicode format characters, and
+    # invalid UTF-8 cannot be accepted as a clean transcript.
+    if "\ufffd" in cleaned:
+        raise ValueError("invalid UTF-8 or replacement character in linker log")
+    for character in cleaned:
+        if character in "\r\n\t":
+            continue
+        if unicodedata.category(character) in ("Cc", "Cf", "Cs", "Zl", "Zp"):
+            raise ValueError("unsafe control or invisible format in linker log")
 
 
 def check_file(path: Path) -> None:
