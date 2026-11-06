@@ -33,15 +33,29 @@ def validate(raw: bytes) -> None:
 
 
 def check_file(path: Path) -> None:
-    # Follow neither a symlink nor an unbounded stream. Detect resize on read.
-    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    # A FIFO can block in open() before fstat() ever rejects it. Require
+    # O_NONBLOCK and O_NOFOLLOW so neither special files nor symlinks can
+    # stall the provenance gate or redirect it to a different file.
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_NONBLOCK"):
+        raise ValueError("safe linker-log admission unsupported on this host")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as handle:
-        meta = os.fstat(handle.fileno())
-        if not stat.S_ISREG(meta.st_mode):
+        before = os.fstat(handle.fileno())
+        if not stat.S_ISREG(before.st_mode):
             raise ValueError("linker log must be a regular file")
-        if meta.st_size > MAX_LOG_BYTES:
+        if before.st_size > MAX_LOG_BYTES:
             raise ValueError(f"linker build log exceeds {MAX_LOG_BYTES} bytes")
-        validate(handle.read(MAX_LOG_BYTES + 1))
+        raw = handle.read(MAX_LOG_BYTES + 1)
+        after = os.fstat(handle.fileno())
+        # Reject visibly moving/truncated log files before parsing. This
+        # cannot authenticate a producer or detect every same-size rewrite.
+        if (len(raw) != before.st_size or
+                (before.st_dev, before.st_ino, before.st_size,
+                 before.st_mtime_ns, before.st_ctime_ns) !=
+                (after.st_dev, after.st_ino, after.st_size,
+                 after.st_mtime_ns, after.st_ctime_ns)):
+            raise ValueError("linker log changed during bounded read")
+        validate(raw)
 
 
 def main() -> int:
