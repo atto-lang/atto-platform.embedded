@@ -35,6 +35,22 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   add_test(NAME linker_orphan_log_regressions
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_check_linker_orphans.py")
+
+  # Existing Wave241–244 Python host checks were not in CTest. Explicit
+  # registration makes the normal GCC/Clang host and sanitizer CI exercise
+  # them, without claiming Zephyr firmware or physical board execution.
+  foreach(wave_test IN ITEMS
+      test_linker_stream_admission_gpt6_wave241_20261106
+      test_gpt6_wave242_linker_ansi_diagnostics_20261106
+      test_gpt6_wave243_bounded_utf8_byte_budget_20261106
+      test_gpt6_wave244_linker_log_size_limit_20261106)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/${wave_test}.py")
+      message(FATAL_ERROR "Required embedded host regression missing: ${wave_test}")
+    endif()
+    add_test(NAME ${wave_test}
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/${wave_test}.py")
+    set_tests_properties(${wave_test} PROPERTIES TIMEOUT 45)
+  endforeach()
   add_test(NAME qemu_guest_output_validator
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_verify_qemu_output.py")
