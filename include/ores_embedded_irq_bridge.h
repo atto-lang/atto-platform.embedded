@@ -42,6 +42,13 @@ ores_irq_status ores_irq_bridge_isr_push(
  * Event contains no actor heap pointers or capabilities. The consumed slot's
  * complete object representation is erased via volatile character stores
  * before its release publication to the producer (CPU-side erasure only). */
+/* Foreground-only, non-consuming inspection of the oldest published event.
+ * Uses acquire on the ISR tail; the consumer must serialize peek and pop.
+ * Rejection/EMPTY do not modify *out. Aliases into queue storage are denied.
+ * No allocation, waiting, ISR callbacks or actor runtime calls. */
+ores_irq_status ores_irq_bridge_task_peek(
+    const ores_irq_bridge *bridge, ores_irq_event *out);
+
 ores_irq_status ores_irq_bridge_task_pop(
     ores_irq_bridge *bridge, ores_irq_event *out);
 
