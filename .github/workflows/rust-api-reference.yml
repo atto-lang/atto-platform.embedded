@@ -1,0 +1,17 @@
+name: Rust host reference API
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  rust-host-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile C library and run Rust FFI tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -std=c11 -Wall -Wextra -Wpedantic -Werror -Iinclude -c src/ores_embedded_mailbox.c -o "$RUNNER_TEMP/abi.o"
+          rustc --edition=2021 --test tests/rust_api_reference.rs -C "link-arg=$RUNNER_TEMP/abi.o" -o "$RUNNER_TEMP/abi_contract"
+          "$RUNNER_TEMP/abi_contract" --nocapture

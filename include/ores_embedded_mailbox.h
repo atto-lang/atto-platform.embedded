@@ -50,6 +50,9 @@ ores_embedded_status ores_embedded_peek_length(
 
 size_t ores_embedded_count(const ores_embedded_mailbox *box);
 
+/* Read remaining slots without consuming. Invalid state fails closed; output is zeroed on failure. *available may not alias the mailbox. Serialized event-loop only. */
+ores_embedded_status ores_embedded_remaining_capacity(const ores_embedded_mailbox *box, size_t *available);
+
 #ifdef __cplusplus
 }
 #endif
