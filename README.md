@@ -1,5 +1,13 @@
 # OresEmbedded
 
+## AttoLang naming migration and language authority (2026-11-18)
+
+The public language name is **AttoLang** (formerly **Oreslang**). This is a historical `ores-truffle-oreslang/oreslang-platform.embedded` checkout; its current ecosystem routing is **[atto-lang/atto-platform.embedded](https://github.com/atto-lang/atto-platform.embedded)**. Do not claim device/board or hard-real-time execution from host tests or QEMU alone. A similarly named repository is not evidence of identical commits, GitHub issue/PR history or feature status.
+
+**[atto-lang/atto-spec](https://github.com/atto-lang/atto-spec) is the canonical normative language specification.** Use [atto-platform-conformance](https://github.com/atto-lang/atto-platform-conformance) for executable positive/negative guest fixtures, [atto-compilers-parity-testing](https://github.com/atto-lang/atto-compilers-parity-testing) for cross-backend comparisons, and [atto-common-source](https://github.com/atto-lang/atto-common-source) for portable `.atto` core/std code. Modern proposed language rules include `snake_case` callable naming, `borrow!`/`take!`/`share!`/`copy!`/`copy!!`, [default nonprimitive argument borrowing](https://github.com/atto-lang/atto-spec/blob/main/language/implicit-argument-borrow-v1.md), [static `define const` including one-time `os.read_env`](https://github.com/atto-lang/atto-spec/blob/main/language/file-module-const-v1.md), and [`<<<`/`>>>`/`ashr` shifts versus `<<`/`>>` stream I/O](https://github.com/atto-lang/atto-spec/blob/main/language/bitwise-and-stream-operators-v1.md). Contract status and compiler execution evidence take precedence over old README descriptions.
+
+Retain actual legacy `.ores` files, CLI/package/ABI names and reproducible commands below until each replacement is separately implemented and verified. No Python scripts, CI/test support or generators for new AttoLang work; favor Rust support tooling. No feature or parity claim without exact SHA/tree, toolchain/target, real compiled guest execution and negative tests; host-only tests or zero executed CI steps count as **not executed**.
+
 Embedded and RTOS integration for **Oreslang**, initially targeting Cortex-M and RISC-V.
 
 > **Status: experimental scalar Cortex-M AOT and restricted source actors.** The platform compiles a limited real `.ores` function to ARM code and links it into Zephyr firmware. A bounded static actor adapter supports compiler-generated scalar actor handlers, generation-fenced refs/capability slots and fixed mailboxes. Full source-level actor-to-actor capability binding, await/supervision and hardware isolation are not implemented.
