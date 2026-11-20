@@ -1,0 +1,27 @@
+// Two independent source-defined actors use private scalar state and FIFO mailboxes.
+// Source-level actor-to-actor handler send and suspension are not admitted yet.
+define actor Producer as {
+  let total: int = 0;
+  pub fnc on_message(int n): int {
+    total = total + n;
+    return total;
+  }
+}
+define actor Consumer as {
+  let total: int = 10;
+  pub fnc on_message(int n): int {
+    total = total + n;
+    return total;
+  }
+}
+pub fnc main(): int {
+  const a = spawn Producer();
+  const b = spawn Consumer();
+  a.send(1);
+  b.send(20);
+  a.send(2);
+  b.send(30);
+  stop a;
+  stop b;
+  return 43;
+}
