@@ -102,3 +102,14 @@ ores_embedded_status ores_embedded_peek_length(
 size_t ores_embedded_count(const ores_embedded_mailbox *box) {
     return valid_state(box) ? box->count : 0u;
 }
+
+ores_embedded_status ores_embedded_remaining_capacity(
+    const ores_embedded_mailbox *box, size_t *available) {
+    if (available == NULL) return ORES_EMBEDDED_INVALID_ARGUMENT;
+    if (box != NULL && overlaps_box(box, available, sizeof(*available)))
+        return ORES_EMBEDDED_INVALID_ARGUMENT;
+    *available = 0u;
+    if (!valid_state(box)) return ORES_EMBEDDED_INVALID_ARGUMENT;
+    *available = ORES_EMBEDDED_QUEUE_CAPACITY - box->count;
+    return ORES_EMBEDDED_OK;
+}
