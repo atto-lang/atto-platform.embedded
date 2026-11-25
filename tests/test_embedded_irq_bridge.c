@@ -61,6 +61,14 @@ int main(void) {
     memset(q.slots, 0xa5, sizeof q.slots);
     assert(ores_irq_bridge_init(&q) == ORES_IRQ_OK);
     assert_slots_erased();
+    {
+        uint32_t pending = UINT32_MAX;
+        assert(ores_irq_bridge_task_pending(NULL, &pending) == ORES_IRQ_INVALID);
+        assert(ores_irq_bridge_task_pending(&q, NULL) == ORES_IRQ_INVALID);
+        assert(ores_irq_bridge_task_pending(&q, &q.slots[0].source) == ORES_IRQ_INVALID);
+        assert(ores_irq_bridge_task_pending(&q, &pending) == ORES_IRQ_OK);
+        assert(pending == 0);
+    }
     assert(atomic_is_lock_free(&q.head));
     assert(atomic_is_lock_free(&q.tail));
     assert(ores_irq_bridge_task_pop(&q, NULL) == ORES_IRQ_INVALID);
@@ -70,12 +78,22 @@ int main(void) {
     for (i=0; i<ORES_IRQ_BRIDGE_CAPACITY; ++i)
         assert(ores_irq_bridge_isr_push(&q, i, i+42u) == ORES_IRQ_OK);
     assert(ores_irq_bridge_isr_push(&q, 99u, 99u) == ORES_IRQ_FULL);
+    {
+        uint32_t pending = UINT32_MAX;
+        assert(ores_irq_bridge_task_pending(&q, &pending) == ORES_IRQ_OK);
+        assert(pending == ORES_IRQ_BRIDGE_CAPACITY);
+    }
     for (i=0; i<ORES_IRQ_BRIDGE_CAPACITY; ++i) {
         assert(ores_irq_bridge_task_pop(&q, &out) == ORES_IRQ_OK);
         assert(out.source == i && out.value == i+42u);
         assert(q.slots[i].source == 0 && q.slots[i].value == 0);
     }
     assert(ores_irq_bridge_task_pop(&q, &out) == ORES_IRQ_EMPTY);
+    {
+        uint32_t pending = UINT32_MAX;
+        assert(ores_irq_bridge_task_pending(&q, &pending) == ORES_IRQ_OK);
+        assert(pending == 0);
+    }
     assert_slots_erased();
     /* Overflow of monotonic 32-bit indices must not corrupt FIFO order. */
     atomic_store(&q.head, UINT32_MAX - 3u);
@@ -95,5 +113,15 @@ int main(void) {
     assert(atomic_load(&failures) == 0u);
     assert(ores_irq_bridge_task_pop(&q, &out) == ORES_IRQ_EMPTY);
     assert(atomic_load(&q.head) == TOTAL && atomic_load(&q.tail) == TOTAL);
+    {
+        uint32_t pending = UINT32_MAX;
+        assert(ores_irq_bridge_task_pending(&q, &pending) == ORES_IRQ_OK);
+        assert(pending == 0);
+        atomic_store(&q.head, 1u);
+        atomic_store(&q.tail, ORES_IRQ_BRIDGE_CAPACITY + 2u);
+        pending = UINT32_MAX;
+        assert(ores_irq_bridge_task_pending(&q, &pending) == ORES_IRQ_INVALID);
+        assert(pending == 0);
+    }
     return 0;
 }
