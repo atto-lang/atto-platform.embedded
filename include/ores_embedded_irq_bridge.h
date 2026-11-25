@@ -38,6 +38,13 @@ ores_irq_status ores_irq_bridge_init(ores_irq_bridge *bridge);
 /* Bounded, allocation-free, lock-free ISR operation. */
 ores_irq_status ores_irq_bridge_isr_push(
     ores_irq_bridge *bridge, uint32_t source, uint32_t value);
+/* Foreground-only non-consuming ring depth (0..capacity). SPSC only:
+ * call from the same task as task_pop; never concurrently with init.
+ * Rejects output pointers into ring storage; a safe output is cleared on
+ * inconsistent internal indices. No waiting, allocation or ISR callbacks. */
+ores_irq_status ores_irq_bridge_task_pending(
+    const ores_irq_bridge *bridge, uint32_t *pending);
+
 /* Foreground only: caller routes event through checked actor send API.
  * Event contains no actor heap pointers or capabilities. The consumed slot's
  * complete object representation is erased via volatile character stores

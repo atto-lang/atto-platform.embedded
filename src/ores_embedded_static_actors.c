@@ -287,7 +287,9 @@ void* oreslang_source_actor_spawn_with_capabilities(
         int64_t (*handler)(void*, uint64_t, uint64_t, int64_t),
         uint64_t fields, void* const* actors, uint64_t actor_count) {
     unsigned i;
-    ActorCapability copied[ORES_STATIC_ACTOR_CAPABILITY_SLOTS]={0};
+    /* Only the first actor_count entries are consumed. Avoid Clang's
+     * implicit memset lowering: this object must link with no libc. */
+    ActorCapability copied[ORES_STATIC_ACTOR_CAPABILITY_SLOTS];
     if (fault || current || actor_count > ORES_STATIC_ACTOR_CAPABILITY_SLOTS ||
         (actor_count != 0 && !actors)) {
         fail(); return 0;
@@ -306,6 +308,7 @@ void* oreslang_source_actor_spawn_with_capabilities(
         copied[i].generation=target->generation;
         copied[i].slot=target->slot;
         copied[i].valid=1;
+        copied[i].reserved=0;
     }
     return spawn_actor_internal(
         init,handler,fields,copied,actor_count,0);
