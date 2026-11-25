@@ -70,6 +70,20 @@ ores_irq_status ores_irq_bridge_task_pending(
     return ORES_IRQ_OK;
 }
 
+ores_irq_status ores_irq_bridge_task_peek(
+    const ores_irq_bridge *bridge, ores_irq_event *out) {
+    uint32_t head, tail, used;
+    if (!bridge || !out || overlaps_bridge(bridge, out))
+        return ORES_IRQ_INVALID;
+    head = atomic_load_explicit(&bridge->head, memory_order_relaxed);
+    tail = atomic_load_explicit(&bridge->tail, memory_order_acquire);
+    used = tail - head;
+    if (used > ORES_IRQ_BRIDGE_CAPACITY) return ORES_IRQ_INVALID;
+    if (used == 0u) return ORES_IRQ_EMPTY;
+    *out = bridge->slots[head % ORES_IRQ_BRIDGE_CAPACITY];
+    return ORES_IRQ_OK;
+}
+
 ores_irq_status ores_irq_bridge_task_pop(
     ores_irq_bridge *bridge, ores_irq_event *out) {
     uint32_t head, tail, used, index;
