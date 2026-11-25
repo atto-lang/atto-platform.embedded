@@ -41,6 +41,13 @@ ores_embedded_status ores_embedded_push(
 ores_embedded_status ores_embedded_pop(
     ores_embedded_mailbox *box, uint8_t *destination, size_t capacity,
     size_t *written);
+/* Read the next message length without consuming it. This is a serialized
+ * event-loop preflight only: another caller may pop before the next operation.
+ * On a safe output pointer, *length is cleared on entry. Output must not
+ * overlap mailbox storage. Invalid mailbox state fails closed. */
+ores_embedded_status ores_embedded_peek_length(
+    const ores_embedded_mailbox *box, size_t *length);
+
 size_t ores_embedded_count(const ores_embedded_mailbox *box);
 
 #ifdef __cplusplus
