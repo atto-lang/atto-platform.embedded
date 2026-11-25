@@ -41,3 +41,11 @@ This is a statement of intended project responsibilities. Consult source files a
 AttoLang is the canonical project name; new source, examples and documentation use `.atto` and the `atto-lang` repository organization. This README defines scope, not feature readiness.
 
 **Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.
+
+## Migration and compatibility guardrails
+
+The canonical AttoLang repository and the archived legacy Oreslang embedded repository have distinct GitHub identities; this is not an identity-preserving transfer. Preserve supported legacy `.ores` fixtures and C ABI/toolchain compatibility until separately tested migrations are available. New language sources use `.atto` and follow the [current grammar](https://github.com/atto-lang/atto-spec/blob/main/spec/01-source-and-syntax.md) and [ownership contract](https://github.com/atto-lang/atto-spec/blob/main/spec/04-ownership-and-memory.md). Target syntax does not establish backend support.
+
+Embedded target constraints, small-footprint runtime integration and native hardware receipts belong here. Full desktop/mobile runtime guarantees and managed cloud operations do not. [atto-co](https://github.com/atto-co) owns hosted control planes, deployment, tenancy and billing; any future carve-out requires separate authorization and review.
+
+For future migrations, document source and target administrators, independent security review, exact commits/trees and repository IDs, access rules, Actions, secrets, apps, deploy keys, PRs, releases, packages, Pages, dependencies and rollback. Verify these after an authorized transfer; temporary CI mirrors are not transfers. Empty or null job steps are NOT_EXECUTED. Host-only checks cannot establish guest parity, zero-GC, AOT or board execution.
