@@ -83,6 +83,22 @@ ores_embedded_status ores_embedded_pop(
     return ORES_EMBEDDED_OK;
 }
 
+ores_embedded_status ores_embedded_peek_length(
+    const ores_embedded_mailbox *box, size_t *length) {
+    const ores_embedded_message *slot;
+    if (length == NULL) return ORES_EMBEDDED_INVALID_ARGUMENT;
+    if (box != NULL && overlaps_box(box, length, sizeof(*length)))
+        return ORES_EMBEDDED_INVALID_ARGUMENT;
+    *length = 0;
+    if (!valid_state(box)) return ORES_EMBEDDED_INVALID_ARGUMENT;
+    if (box->count == 0) return ORES_EMBEDDED_EMPTY;
+    slot = &box->slots[box->head];
+    if (slot->length > ORES_EMBEDDED_MESSAGE_BYTES)
+        return ORES_EMBEDDED_INVALID_ARGUMENT;
+    *length = slot->length;
+    return ORES_EMBEDDED_OK;
+}
+
 size_t ores_embedded_count(const ores_embedded_mailbox *box) {
     return valid_state(box) ? box->count : 0u;
 }
